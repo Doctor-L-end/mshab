@@ -2,23 +2,25 @@
 
 SEED=0
 
-TRAJS_PER_OBJ=all
+TRAJS_PER_OBJ=1000
 MAX_IMAGE_CACHE_SIZE=300_000   # safe num for about 64 GiB system memory
 num_dataload_workers=2
 num_iterations=1_000_000
 
-TASK=tidy_house
-SUBTASK=pick
+TASK=set_table
+SUBTASK=place
 SPLIT=train
-OBJ=all
+OBJ=013_apple
 
 # shellcheck disable=SC2001
 ENV_ID="$(echo $SUBTASK | sed 's/\b\(.\)/\u\1/g')SubtaskTrain-v0"
 WORKSPACE="mshab_exps"
-GROUP=$TASK-rcad-dp-$SUBTASK
-EXP_NAME="$ENV_ID/$GROUP/dp-$SUBTASK-$OBJ-local-trajs_per_obj=$TRAJS_PER_OBJ"
+GROUP=$TASK-rcad-act-$SUBTASK
+EXP_NAME="$ENV_ID/$GROUP/act-$SUBTASK-$OBJ-local-trajs_per_obj=$TRAJS_PER_OBJ"
 # shellcheck disable=SC2001
-PROJECT_NAME="MS-HAB-RCAD-dp"
+PROJECT_NAME="MS-HAB-RCAD-act"
+
+OBS_MODE="rgbd" # env supports rgbd, pointcloud, segmentation, etc per ManiSkill; we use depth for provided baselines
 
 WANDB=True
 TENSORBOARD=True
@@ -43,7 +45,7 @@ args=(
     "eval_env.env_id=$ENV_ID"
     "eval_env.task_plan_fp=$MS_ASSET_DIR/data/scene_datasets/replica_cad_dataset/rearrange/task_plans/$TASK/$SUBTASK/$SPLIT/$OBJ.json"
     "eval_env.spawn_data_fp=$MS_ASSET_DIR/data/scene_datasets/replica_cad_dataset/rearrange/spawn_data/$TASK/$SUBTASK/$SPLIT/spawn_data.pt"
-    "eval_env.stack=2"
+    "eval_env.stack=1"
     "algo.num_iterations=$num_iterations"
     "algo.trajs_per_obj=$TRAJS_PER_OBJ"
     "algo.data_dir_fp=$data_dir_fp"
@@ -53,7 +55,8 @@ args=(
     "algo.log_freq=1000"
     "algo.save_freq=5000"
     "eval_env.make_env=True"
-    "eval_env.num_envs=189"
+    "eval_env.obs_mode=$OBS_MODE"
+    "eval_env.num_envs=252"
     "eval_env.max_episode_steps=200"
     "eval_env.record_video=False"
     "eval_env.info_on_video=True"
@@ -66,14 +69,14 @@ args=(
 
 if [ -f "$RESUME_CONFIG" ] && [ -f "$RESUME_LOGDIR/models/latest.pt" ]; then
     echo "RESUMING"
-    SAPIEN_NO_DISPLAY=1 python -m mshab.train_diffusion_policy "$RESUME_CONFIG" RESUME_LOGDIR="$RESUME_LOGDIR" \
+    SAPIEN_NO_DISPLAY=1 python -m mshab.train_act "$RESUME_CONFIG" RESUME_LOGDIR="$RESUME_LOGDIR" \
         logger.clear_out="False" \
         logger.best_stats_cfg="{eval/success_once: 1, eval/return_per_step: 1}" \
         "${args[@]}"
 
 else
     echo "STARTING"
-    SAPIEN_NO_DISPLAY=1 python -m mshab.train_diffusion_policy configs/dp_pick.yml \
+    SAPIEN_NO_DISPLAY=1 python -m mshab.train_act configs/act_pick.yml \
         logger.clear_out="True" \
         logger.best_stats_cfg="{eval/success_once: 1, eval/return_per_step: 1}" \
         "${args[@]}"

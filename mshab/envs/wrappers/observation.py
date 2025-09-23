@@ -10,6 +10,8 @@ from mani_skill.envs.sapien_env import BaseEnv
 from mani_skill.utils import common
 from mani_skill.utils.common import flatten_state_dict
 
+import torchvision.transforms as T
+
 
 class FetchDepthObservationWrapper(gym.ObservationWrapper):
     def __init__(self, env, cat_state=True, cat_pixels=False) -> None:
@@ -22,25 +24,34 @@ class FetchDepthObservationWrapper(gym.ObservationWrapper):
 
         self._base_env: BaseEnv = env.unwrapped
         init_raw_obs = common.to_tensor(self._base_env._init_raw_obs)
-
+        self.transforms = T.Compose([T.Resize((224, 224), antialias=True)])
         self._base_env.update_obs_space(common.to_numpy(self.observation(init_raw_obs)))
 
     def observation(self, observation):
+        # print(observation.keys()) # dict_keys(['agent', 'extra', 'sensor_data', 'sensor_param'])
         agent_obs = observation["agent"]
         extra_obs = observation["extra"]
-        fetch_head_depth = observation["sensor_data"]["fetch_head"]["depth"].permute(
+        fetch_head_depth = self.transforms(observation["sensor_data"]["fetch_head"]["depth"].permute(
             0, 3, 1, 2
-        )
-        fetch_hand_depth = observation["sensor_data"]["fetch_hand"]["depth"].permute(
+        ))
+        fetch_hand_depth = self.transforms(observation["sensor_data"]["fetch_hand"]["depth"].permute(
             0, 3, 1, 2
-        )
+        ))
+        fetch_head_rgb = self.transforms(observation["sensor_data"]["fetch_head"]["rgb"].permute(
+            0, 3, 1, 2
+        ))
+        fetch_hand_rgb = self.transforms(observation["sensor_data"]["fetch_hand"]["rgb"].permute(
+            0, 3, 1, 2
+        ))
 
-        depth_pixels = (
+        image_pixels = (
             dict(
-                all_depth=self._stack_fn([fetch_head_depth, fetch_hand_depth], axis=-3)
+                all_image=self._stack_fn([fetch_head_rgb, fetch_head_depth, fetch_hand_rgb, fetch_hand_depth], axis=-3)
             )
             if self.cat_pixels
             else dict(
+                fetch_head_rgb=fetch_head_rgb,
+                fetch_hand_rgb=fetch_hand_rgb,
                 fetch_head_depth=fetch_head_depth,
                 fetch_hand_depth=fetch_hand_depth,
             )
@@ -54,13 +65,13 @@ class FetchDepthObservationWrapper(gym.ObservationWrapper):
                     ],
                     axis=1,
                 ),
-                **depth_pixels,
+                **image_pixels,
             )
             if self.cat_state
             else dict(
                 agent=agent_obs,
                 extra=extra_obs,
-                **depth_pixels,
+                **image_pixels,
             )
         )
 
@@ -72,7 +83,7 @@ class FrameStack(gym.Wrapper):
         self,
         env,
         num_stack: int,
-        stacking_keys: List[str] = ["fetch_head_depth", "fetch_hand_depth"],
+        stacking_keys: List[str] = ["fetch_head_rgb", "fetch_head_depth", "fetch_hand_rgb", "fetch_hand_depth"],
     ) -> None:
         super().__init__(env)
         self._base_env = env.unwrapped

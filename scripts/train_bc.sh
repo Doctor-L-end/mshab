@@ -3,12 +3,12 @@
 SEED=0
 
 TRAJS_PER_OBJ=1000
-epochs=10
+epochs=20
 
-TASK=tidy_house
-SUBTASK=pick
+TASK=set_table
+SUBTASK=place
 SPLIT=train
-OBJ=all
+OBJ=024_bowl
 
 # shellcheck disable=SC2001
 ENV_ID="$(echo $SUBTASK | sed 's/\b\(.\)/\u\1/g')SubtaskTrain-v0"
@@ -18,11 +18,12 @@ EXP_NAME="$ENV_ID/$GROUP/bc-$SUBTASK-$OBJ-local-trajs_per_obj=$TRAJS_PER_OBJ"
 # shellcheck disable=SC2001
 PROJECT_NAME="MS-HAB-RCAD-bc"
 
-WANDB=False
-TENSORBOARD=True
+WANDB=True
+TENSORBOARD=False
 if [[ -z "${MS_ASSET_DIR}" ]]; then
     MS_ASSET_DIR="$HOME/.maniskill"
 fi
+
 
 RESUME_LOGDIR="$WORKSPACE/$EXP_NAME"
 RESUME_CONFIG="$RESUME_LOGDIR/config.yml"
@@ -54,8 +55,8 @@ args=(
     "eval_env.make_env=True"
     "eval_env.num_envs=252"
     "eval_env.max_episode_steps=200"
-    "eval_env.record_video=False"
-    "eval_env.info_on_video=False"
+    "eval_env.record_video=True"
+    "eval_env.info_on_video=True"
     "eval_env.save_video_freq=1"
     "logger.wandb=$WANDB"
     "logger.tensorboard=$TENSORBOARD"

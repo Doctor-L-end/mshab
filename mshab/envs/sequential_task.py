@@ -307,7 +307,7 @@ class SequentialTaskEnv(SceneManipulationEnv):
     ):
         subtask0 = parallel_subtasks[0]
 
-        # NOTE (arth): current MS3 requires all parallel articulations be the same
+        # NOTE (arth): current MS3 requires all parallel articulations be the same 原因在这个
         assert all_equal([subtask.articulation_type for subtask in parallel_subtasks])
         assert all_equal(
             [subtask.articulation_handle_link_idx for subtask in parallel_subtasks]

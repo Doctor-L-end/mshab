@@ -19,15 +19,15 @@ import torch  # PyTorch深度学习框架
 import torch.optim as optim  # 优化器
 from torch.utils.data.sampler import BatchSampler, RandomSampler  # 数据采样
 import torchvision.transforms as T
-from mani_skill import ASSET_DIR  # ManiSkill资产目录
-from mani_skill.utils import common  # ManiSkill通用工具
-
 from diffusers.optimization import get_scheduler  # 学习率调度器
 from diffusers.training_utils import EMAModel  # 指数移动平均模型
 
+from mani_skill import ASSET_DIR  # ManiSkill资产目录
+from mani_skill.utils import common  # ManiSkill通用工具
+
 # 从自定义模块导入
-from mshab.agents.dp import Agent  # 扩散策略代理
-from mshab.agents.dp.utils import IterationBasedBatchSampler, worker_init_fn  # 数据采样工具
+from mshab.agents.act import Agent  # 扩散策略代理
+from mshab.agents.act.utils import IterationBasedBatchSampler, worker_init_fn  # 数据采样工具
 from mshab.envs.make import EnvConfig, make_env  # 环境配置和创建
 from mshab.utils.array import to_tensor  # 数组转张量
 from mshab.utils.config import parse_cfg  # 配置解析
@@ -36,23 +36,39 @@ from mshab.utils.dataset import ClosableDataLoader, ClosableDataset  # 可关闭
 from mshab.utils.logger import Logger, LoggerConfig  # 日志记录
 from mshab.utils.time import NonOverlappingTimeProfiler  # 时间分析器
 
-# 定义扩散策略的配置类
-@dataclass
-class DPConfig:
-    name: str = "diffusion_policy"  # 算法名称
+from mshab.vis import visualize_image  # 可视化张量
 
-    # 扩散策略相关参数
+# ACT算法的配置类
+@dataclass
+class ACTConfig:
+    name: str = "act"  # 算法名称
+
+    # ACT模型特定参数
     lr: float = 1e-4  # 学习率
     batch_size: int = 256  # 批量大小
-    obs_horizon: int = 2  # 观测历史长度
-    act_horizon: int = 8  # 动作执行长度
-    pred_horizon: int = 16  # 预测长度
-    diffusion_step_embed_dim: int = 64  # 扩散步骤嵌入维度
-    unet_dims: List[int] = default_field(  # UNet网络维度
-        [64, 128, 256]
-    )  
-    n_groups: int = 8  # 分组归一化的组数
-    encoded_image_feature_size: int = 1024  # 编码图像特征大小
+    kl_weight: float = 10  # KL散度权重
+    temporal_agg: bool = True  # 是否使用时序聚合
+    obs_horizon: int = 1  # 观测历史长度
+    
+    # 骨干网络参数
+    position_embedding: str = 'sine'  # 位置编码类型
+    backbone: str = 'resnet18'  # 骨干网络类型
+    lr_backbone: float = 1e-5  # 骨干网络学习率
+    masks: bool = False  # 是否使用掩码
+    dilation: bool = False  # 是否使用膨胀卷积
+    include_depth: bool = True  # 是否包含深度信息
+    include_rgb: bool = False  # 是否包含RGB信息
+    
+    # Transformer参数
+    enc_layers: int = 2  # 编码器层数
+    dec_layers: int = 4  # 解码器层数
+    dim_feedforward: int = 512  # 前馈网络维度
+    hidden_dim: int = 256  # 隐藏层维度
+    dropout: float = 0.1  # Dropout率
+    nheads: int = 8  # 多头注意力头数
+    pred_horizon: int = 30  # 查询数量num_queries
+    num_queries: int = 30  # 查询数量num_queries 等于预测长度pred_horizon
+    pre_norm: bool = False  # 是否使用预归一化
 
     # 数据集相关参数
     data_dir_fp: str = (  # 演示数据集路径
@@ -78,7 +94,7 @@ class DPConfig:
 class TrainConfig:
     seed: int  # 随机种子
     eval_env: EnvConfig  # 评估环境配置
-    algo: DPConfig  # 算法配置
+    algo: ACTConfig  # 算法配置
     logger: LoggerConfig  # 日志记录器配置
 
     wandb_id: Optional[str] = None  # Weights & Biases ID
@@ -164,15 +180,15 @@ def recursive_h5py_to_numpy(h5py_obs, slice=None):
         return h5py_obs[slice]
     return h5py_obs[:]
 
-# 定义扩散策略数据集类
-class DPDataset(ClosableDataset):  # 将所有数据加载到内存中
+# ACT数据集类（继承自可关闭数据集）
+class ACTDataset(ClosableDataset):
     def __init__(
         self,
         data_path,
         obs_horizon,
         pred_horizon,
         control_mode,
-        trajs_per_obj="all",
+        trajs_per_obj = "all",  # 每个物体的轨迹数
         max_image_cache_size=0,
         truncate_trajectories_at_success=False,
     ):
@@ -189,9 +205,9 @@ class DPDataset(ClosableDataset):  # 将所有数据加载到内存中
         trajectories = dict(actions=[], observations=[])
         num_cached = 0
         self.h5_files = []
-
-        self.transforms = T.Compose([T.Resize((224, 224), antialias=True)])
         
+        self.transforms = T.Compose([T.Resize((224, 224), antialias=True)])
+
         # 遍历所有HDF5文件
         for fp_num, fp in enumerate(h5_fps):
             f = h5py.File(fp, "r")
@@ -229,7 +245,7 @@ class DPDataset(ClosableDataset):  # 将所有数据加载到内存中
                 ]
                 state_obs = torch.from_numpy(np.concatenate(state_obs_list, axis=1))
                 act = torch.from_numpy(act)
-
+             
                 # print(obs.keys()) # <KeysViewHDF5 ['agent', 'extra', 'sensor_param', 'sensor_data']>
                 # print(obs["sensor_data"].keys()) # <KeysViewHDF5 ['fetch_head', 'fetch_hand']>
                 # print(obs["sensor_data"]["fetch_head"].keys()) # <KeysViewHDF5 ['depth', 'rgb']>
@@ -264,7 +280,6 @@ class DPDataset(ClosableDataset):  # 将所有数据加载到内存中
                 f.close()
             else:
                 self.h5_files.append(f)
-
         # 根据控制模式设置动作填充
         if (
             "delta_pos" in control_mode
@@ -343,7 +358,6 @@ class DPDataset(ClosableDataset):  # 将所有数据加载到内存中
             obs_seq["state"].shape[0] == self.obs_horizon
             and act_seq.shape[0] == self.pred_horizon
         )
-        
         return {
             "observations": obs_seq,
             "actions": act_seq,
@@ -358,73 +372,43 @@ class DPDataset(ClosableDataset):  # 将所有数据加载到内存中
         for h5_file in self.h5_files:
             h5_file.close()
 
-# 主程序入口
-if __name__ == "__main__":
-    # 获取配置文件路径
-    PASSED_CONFIG_PATH = sys.argv[1]
-    # 解析并获取训练配置
-    cfg = get_mshab_train_cfg(parse_cfg(default_cfg_path=PASSED_CONFIG_PATH))
-
-    print("cfg:", cfg, flush=True)
-
+# 训练主函数
+def train(cfg: TrainConfig):
     # 设置随机种子
     random.seed(cfg.seed)
     np.random.seed(cfg.seed)
     torch.manual_seed(cfg.seed)
     torch.backends.cudnn.deterministic = cfg.algo.torch_deterministic
 
-    # 验证参数约束
-    assert cfg.algo.obs_horizon + cfg.algo.act_horizon - 1 <= cfg.algo.pred_horizon
-    assert (
-        cfg.algo.obs_horizon >= 1
-        and cfg.algo.act_horizon >= 1
-        and cfg.algo.pred_horizon >= 1
-    )
-
-    # 设置设备（GPU优先）
+    # 设置设备（优先使用GPU）
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # -------------------------------------------------------------------------------------------------
-    # 创建环境
-    # -------------------------------------------------------------------------------------------------
-    print("making eval env", flush=True)
+    # 创建评估环境
+    print("创建评估环境中...")
     eval_envs = make_env(
         cfg.eval_env,
-        video_path=cfg.logger.eval_video_path,
+        video_path=cfg.logger.eval_video_path,  # 评估视频保存路径
     )
     # 验证动作空间类型
     assert isinstance(
         eval_envs.single_action_space, gym.spaces.Box
-    ), "only continuous action space is supported"
+    ), "仅支持连续动作空间"
+    print("创建完成")
 
-    # 重置环境
+    # 初始化环境
     eval_obs, _ = eval_envs.reset(seed=cfg.seed + 1_000_000)
-    print("made", flush=True)
+    eval_envs.action_space.seed(cfg.seed + 1_000_000)
 
     # -------------------------------------------------------------------------------------------------
-    # 创建代理和日志记录器
+    # 智能体和优化器初始化
     # -------------------------------------------------------------------------------------------------
-    print("making agent and logger...", flush=True)
+    agent = Agent(eval_envs, args=cfg.algo).to(device)
+    ema = EMAModel(parameters=agent.parameters(), power=0.75)
+    ema_agent = Agent(eval_envs, args=cfg.algo).to(device)
 
-    # 创建扩散策略代理
-    agent = Agent(
-        single_observation_space=eval_envs.single_observation_space,
-        single_action_space=eval_envs.single_action_space,
-        obs_horizon=cfg.algo.obs_horizon,
-        act_horizon=cfg.algo.act_horizon,
-        pred_horizon=cfg.algo.pred_horizon,
-        diffusion_step_embed_dim=cfg.algo.diffusion_step_embed_dim,
-        unet_dims=cfg.algo.unet_dims,
-        n_groups=cfg.algo.n_groups,
-        device=device,
-    ).to(device)
-
-    # 创建优化器
-    optimizer = optim.AdamW(
-        params=agent.parameters(),
+    optimizer = torch.optim.Adam(
+        agent.parameters(),
         lr=cfg.algo.lr,
-        betas=(0.95, 0.999),
-        weight_decay=1e-6,
     )
 
     # 创建学习率调度器
@@ -435,23 +419,6 @@ if __name__ == "__main__":
         num_training_steps=cfg.algo.num_iterations,
     )
 
-    # 创建指数移动平均模型
-    ema = EMAModel(parameters=agent.parameters(), power=0.75)
-    ema_agent = Agent(
-        single_observation_space=eval_envs.single_observation_space,
-        single_action_space=eval_envs.single_action_space,
-        obs_horizon=cfg.algo.obs_horizon,
-        act_horizon=cfg.algo.act_horizon,
-        pred_horizon=cfg.algo.pred_horizon,
-        diffusion_step_embed_dim=cfg.algo.diffusion_step_embed_dim,
-        unet_dims=cfg.algo.unet_dims,
-        n_groups=cfg.algo.n_groups,
-        device=device,
-    ).to(device)
-
-    # -------------------------------------------------------------------------------------------------
-    # 创建日志记录器
-    # -------------------------------------------------------------------------------------------------
     # 模型保存函数
     def save(save_path):
         ema.copy_to(ema_agent.parameters())
@@ -473,36 +440,31 @@ if __name__ == "__main__":
         optimizer.load_state_dict(checkpoint["optimizer"])
         lr_scheduler.load_state_dict(checkpoint["lr_scheduler"])
 
-    # 创建日志记录器
+    # 初始化日志记录器
     logger = Logger(
         logger_cfg=cfg.logger,
-        save_fn=save,
+        save_fn=save,  # 注册保存函数
     )
 
-    # 加载模型检查点（如果存在）
+    # 加载模型检查点（如果提供）
     if cfg.model_ckpt is not None:
         load(cfg.model_ckpt)
 
-    print("agent and logger made!", flush=True)
-
     # -------------------------------------------------------------------------------------------------
-    # 加载数据集
+    # 数据加载器初始化
     # -------------------------------------------------------------------------------------------------
-    print("loading dataset...", flush=True)
-
-    # 创建扩散策略数据集
-    dataset = DPDataset(
+    act_dataset = ACTDataset(
         cfg.algo.data_dir_fp,
-        obs_horizon=cfg.algo.obs_horizon,
-        pred_horizon=cfg.algo.pred_horizon,
+        cfg.algo.obs_horizon,
+        cfg.algo.pred_horizon,
         control_mode=eval_envs.unwrapped.control_mode,
         trajs_per_obj=cfg.algo.trajs_per_obj,
         max_image_cache_size=cfg.algo.max_image_cache_size,
         truncate_trajectories_at_success=cfg.algo.truncate_trajectories_at_success,
     )
-    
+
     # 创建数据采样器
-    sampler = RandomSampler(dataset, replacement=False)
+    sampler = RandomSampler(act_dataset, replacement=False)
     batch_sampler = BatchSampler(
         sampler, batch_size=cfg.algo.batch_size, drop_last=True
     )
@@ -510,7 +472,7 @@ if __name__ == "__main__":
     
     # 创建数据加载器
     train_dataloader = ClosableDataLoader(
-        dataset,
+        act_dataset,
         batch_sampler=batch_sampler,
         num_workers=cfg.algo.num_dataload_workers,
         worker_init_fn=lambda worker_id: worker_init_fn(worker_id, base_seed=cfg.seed),
@@ -581,16 +543,24 @@ if __name__ == "__main__":
 
         # 准备观测数据
         obs_batch_dict = data_batch["observations"]
+
+        # if iteration == 0 :
+        #     visualize_image(obs_batch_dict['fetch_head_rgb'][0, -1], "fetch_head_rgb")  # 可视化最后一帧头部RGB图像
+        #     visualize_image(obs_batch_dict['fetch_head_depth'][0, -1], "fetch_head_depth")  # 可视化最后一帧头部深度图像
+        #     visualize_image(obs_batch_dict['fetch_hand_rgb'][0, -1], "fetch_hand_rgb")  # 可视化最后一帧手部RGB图像
+        #     visualize_image(obs_batch_dict['fetch_hand_depth'][0, -1], "fetch_hand_depth")  # 可视化最后一帧手部深度图像
+
         obs_batch_dict = {
             k: v.cuda(non_blocking=True) for k, v in obs_batch_dict.items()
         }
         act_batch = data_batch["actions"].cuda(non_blocking=True)
 
         # 计算损失
-        total_loss = agent.compute_loss(
-            obs_seq=obs_batch_dict,
+        loss_dict = agent.compute_loss(
+            obs=obs_batch_dict,
             action_seq=act_batch,
         )
+        total_loss = loss_dict['loss']
 
         # 反向传播和优化
         optimizer.zero_grad()
@@ -616,30 +586,92 @@ if __name__ == "__main__":
         # 评估
         if cfg.algo.eval_freq:
             if check_freq(cfg.algo.eval_freq):
+                # 初始化时间聚合机制
+                if cfg.algo.temporal_agg:
+                    # 时间聚合模式下每步查询一次策略
+                    query_frequency = 1
+                    # 创建全时动作表（四维张量）
+                    all_time_actions = torch.zeros([cfg.eval_env.num_envs, cfg.eval_env.max_episode_steps, 
+                        cfg.eval_env.max_episode_steps+cfg.algo.num_queries, eval_envs.single_action_space.shape[0]], device=device)
+                else:
+                    # 非时间聚合模式下按查询频率更新
+                    query_frequency = cfg.algo.num_queries
+                    # 存储待执行的动作序列
+                    actions_to_take = torch.zeros([cfg.eval_env.num_envs, cfg.algo.num_queries, eval_envs.single_action_space.shape[0]], device=device)
                 with torch.no_grad():
                     # 使用EMA模型进行评估
                     ema.copy_to(ema_agent.parameters())
                     agent.eval()
+                    # 重置环境获取初始观测
                     obs, info = eval_envs.reset()
+
+                    # visualize_image(obs['fetch_head_rgb'][0, -1], "eval_fetch_head_rgb")  # 可视化最后一帧头部RGB图像
+                    # visualize_image(obs['fetch_head_depth'][0, -1], "eval_fetch_head_depth")  # 可视化最后一帧头部深度图像
+                    # visualize_image(obs['fetch_hand_rgb'][0, -1], "eval_fetch_hand_rgb")  # 可视化最后一帧手部RGB图像
+                    # visualize_image(obs['fetch_hand_depth'][0, -1], "eval_fetch_hand_depth")  # 可视化最后一帧手部深度图像
+                    # exit()
+
+                    # 初始化时间步
+                    ts = 0
+                    # print(obs["fetch_head_rgb"].shape) # (189, 2, 3, 128, 128)  2表示stack=2，stack的作用是提供历史帧
+                    # print(obs["fetch_head_depth"].shape) # (189, 2, 1, 128, 128)  2表示stack=2，stack的作用是提供历史帧
+                    # print(obs.keys()) # dict_keys(['state', 'fetch_head_rgb', 'fetch_hand_rgb', 'fetch_head_depth', 'fetch_hand_depth'])
+                    
+                    # assert cfg.eval_env.stack == 1, "当前仅支持评估环境的stack为1"
                     
                     # 运行评估环境直到收集足够的评估周期
-                    while len(eval_envs.return_queue) < cfg.algo.eval_episodes:
+                    for _ in range(eval_envs.max_episode_steps):
+                        # print(len(eval_envs.return_queue), cfg.algo.eval_episodes)
                         obs = common.to_tensor(obs, device)
-                        # 获取动作序列
-                        action_seq = agent.get_action(obs)
-                        # 执行动作序列
-                        for i in range(action_seq.shape[1]):
-                            obs, rew, terminated, truncated, info = eval_envs.step(
-                                action_seq[:, i]
-                            )
-                            if truncated.any():
-                                break
+                        # 在指定频率查询策略
+                        if ts % query_frequency == 0:
+                            # 获取动作序列（num_queries步的动作）
+                            action_seq = agent.get_action(obs)
 
-                        # 确保所有环境同时截断
+                        # 时间聚合模式处理
+                        if cfg.algo.temporal_agg:
+                            # 确保查询频率为1
+                            assert query_frequency == 1, "query_frequency != 1 has not been implemented for temporal_agg==1."
+                            # 将新动作序列存入全时动作表
+                            all_time_actions[:, ts, ts:ts+cfg.algo.num_queries] = action_seq
+                            # 提取当前时间步的所有历史动作
+                            actions_for_curr_step = all_time_actions[:, :, ts]
+                            # 创建动作填充状态掩码
+                            actions_populated = torch.zeros(cfg.eval_env.max_episode_steps, dtype=torch.bool, device=device)
+                            # 标记有效动作范围
+                            actions_populated[max(0, ts + 1 - cfg.algo.num_queries):ts+1] = True
+                            # 过滤出有效动作
+                            actions_for_curr_step = actions_for_curr_step[:, actions_populated]
+                            
+                            # 设置时间衰减权重
+                            k = 0.01
+                            if ts < cfg.algo.num_queries:
+                                # 计算指数权重
+                                exp_weights = torch.exp(-k * torch.arange(len(actions_for_curr_step[0]), device=device))
+                                # 归一化权重
+                                exp_weights = exp_weights / exp_weights.sum()
+                                # 扩展权重到所有环境
+                                exp_weights = torch.tile(exp_weights, (cfg.eval_env.num_envs, 1))
+                                # 增加维度用于广播
+                                exp_weights = torch.unsqueeze(exp_weights, -1)
+                            
+                            # 计算加权平均动作
+                            raw_action = (actions_for_curr_step * exp_weights).sum(dim=1)
+                        else:
+                            # 非时间聚合模式：按索引选择当前动作
+                            if ts % query_frequency == 0:
+                                actions_to_take = action_seq
+                            raw_action = actions_to_take[:, ts % query_frequency]
+
+                        # 环境执行动作
+                        obs, rew, terminated, truncated, info = eval_envs.step(raw_action)
+                        ts += 1  # 增加时间步
+
+                        # 收集环境结束时的信息
                         if truncated.any():
-                            assert (
-                                truncated.all() == truncated.any()
-                            ), "all episodes should truncate at the same time for fair evaluation with other algorithms"
+                            # 确保所有环境同时结束
+                            assert truncated.all() == truncated.any(), "all episodes should truncate at the same time for fair evaluation with other algorithms"
+                            break
                     
                     # 恢复训练模式
                     agent.train()
@@ -661,3 +693,9 @@ if __name__ == "__main__":
     train_dataloader.close()
     eval_envs.close()
     logger.close()
+
+# 主程序入口
+if __name__ == "__main__":
+    PASSED_CONFIG_PATH = sys.argv[1]  # 从命令行参数获取配置路径
+    cfg = get_mshab_train_cfg(parse_cfg(default_cfg_path=PASSED_CONFIG_PATH))  # 解析配置
+    train(cfg)  # 启动训练

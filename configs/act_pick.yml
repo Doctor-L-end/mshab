@@ -4,14 +4,15 @@ eval_env:
   make_env: True
 
   env_id: "PickSubtaskTrain-v0"
-  num_envs: 252
+  num_envs: 63
   max_episode_steps: 200
  
-  continuous_task: True # 为True时，episode不会因为完成task而结束，而是继续下一个task，直到max_episode_steps;为False时，完成task后episode结束，这时success_at_once=success_once
+  continuous_task: True
 
   cat_state: True
   cat_pixels: False
-  frame_stack: 1
+  frame_stack: null
+  stack: 1
 
   stationary_base: False
   stationary_torso: False
@@ -20,7 +21,7 @@ eval_env:
   task_plan_fp: ~/.maniskill/data/scene_datasets/replica_cad_dataset/rearrange/task_plans/tidy_house/pick/train/all.json
   spawn_data_fp: "~/.maniskill/data/scene_datasets/replica_cad_dataset/rearrange/spawn_data/tidy_house/pick/train/spawn_data.pt"
 
-  record_video: True
+  record_video: False
   info_on_video: True
 
   extra_stat_keys: []
@@ -31,25 +32,34 @@ eval_env:
     target_randomization: False
 
 algo:
-  name: bc
+  name: act
 
-  lr: 3e-4
-  batch_size: 512
+  lr: 1e-4
+  batch_size: 256
 
-  epochs: 100
-  eval_freq: 1
-  log_freq: 1
-  save_freq: 1
+  obs_horizon: 1                # Seems not very important in ManiSkill, 1, 2, 4 work well
+  pred_horizon: 30              # num_queries
+  num_queries: 30              # num_queries
+  include_depth: True  # 是否包含深度信息
+  include_rgb: True  # 是否包含RGB信息
 
+  # Dataset
+  data_dir_fp: ~/.manisill/data/scene_datasets/replica_cad_dataset/rearrange-dataset/tidy_hosue/pick
   trajs_per_obj: all
-  data_dir_fp: null
-  max_cache_size: 0
+  max_image_cache_size: 0
+  num_dataload_workers: 0
 
+  # Experiment
+  num_iterations: 1_000_000
+  log_freq: 1000
+  eval_freq: 5000
+  save_freq: 5000
+  torch_deterministic: True
   save_backup_ckpts: False
 
 logger:
   workspace: mshab_exps
-  exp_name: bc-pick
+  exp_name: act-pick
   clear_out: True
   
   tensorboard: True

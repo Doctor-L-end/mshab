@@ -48,7 +48,7 @@ class EnvConfig:
 
     make_env: bool = True
     # NOTE (arth): env supports rgbd, pointcloud, segmentation, etc per ManiSkill; we use depth for provided baselines
-    obs_mode: str = "depth"
+    obs_mode: str = "rgbd" #"depth"
     render_mode: str = "all"
     shader_dir: str = "minimal"
     sim_backend: str = "gpu"
@@ -122,9 +122,9 @@ def make_env(
             env,
             num_stack=env_cfg.frame_stack,
             stacking_keys=(
-                ["all_depth"]
+                ["all_image"]
                 if env_cfg.cat_pixels
-                else ["fetch_head_depth", "fetch_hand_depth"]
+                else ["fetch_head_rgb", "fetch_head_depth", "fetch_hand_rgb", "fetch_hand_depth"]
             ),
         )
     elif env_cfg.stack is not None:

@@ -6,16 +6,16 @@
 
 SEED=0
 
-TASK=tidy_house
+TASK=set_table
 SUBTASK=pick
 SPLIT=train
-OBJ=all
+OBJ=013_apple
 
-record_video=False
-info_on_video=False
+record_video=True
+info_on_video=True
 save_trajectory=False
 max_trajectories=1000
-policy_type=rl_per_obj
+policy_type=act
 
 continuous_task=True
 
@@ -28,13 +28,13 @@ WORKSPACE="mshab_exps"
 GROUP=eval_seq_task-rcad-$TASK-$SUBTASK
 EXP_NAME="eval_seq_task/$TASK/$SUBTASK/$SPLIT/$OBJ/$policy_type"
 # shellcheck disable=SC2001
-PROJECT_NAME="MS-HAB-RCAD-$(echo $SUBTASK | sed 's/\b\(.\)/\u\1/g')-$TASK-sac"
+PROJECT_NAME="MS-HAB-RCAD-$(echo $SUBTASK | sed 's/\b\(.\)/\u\1/g')-$TASK-$policy_type"
 if [[ -z "${MS_ASSET_DIR}" ]]; then
     MS_ASSET_DIR="$HOME/.maniskill"
 fi
 
 
-WANDB=False
+WANDB=True
 TENSORBOARD=True
 
 #############################################
@@ -124,13 +124,16 @@ if [[ $policy_type == "bc" ]]; then
 elif [[ $policy_type == "dp" ]]; then
         FRAME_STACK=null
         STACK=2
+elif [[ $policy_type == "act" ]]; then
+        FRAME_STACK=null
+        STACK=1
 else
         FRAME_STACK=3
         STACK=null
 fi
 
 #############################################
-
+NUM_ENVS=1 #看着清晰
 SAPIEN_NO_DISPLAY=1 python -m mshab.evaluate configs/evaluate.yml \
         seed=$SEED \
         task=$TASK \
