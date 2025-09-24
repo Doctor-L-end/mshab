@@ -2,15 +2,15 @@
 
 SEED=0
 
-TRAJS_PER_OBJ=all
+TRAJS_PER_OBJ=1000
 MAX_IMAGE_CACHE_SIZE=300_000   # safe num for about 64 GiB system memory
-num_dataload_workers=2
+num_dataload_workers=8
 num_iterations=1_000_000
 
-TASK=tidy_house
-SUBTASK=pick
+TASK=set_table
+SUBTASK=open
 SPLIT=train
-OBJ=all
+OBJ=fridge
 
 # shellcheck disable=SC2001
 ENV_ID="$(echo $SUBTASK | sed 's/\b\(.\)/\u\1/g')SubtaskTrain-v0"
@@ -22,6 +22,8 @@ PROJECT_NAME="MS-HAB-RCAD-dp"
 
 WANDB=True
 TENSORBOARD=True
+export WANDB_API_KEY="6fef053c5da3e0cd487fe9096cc2e2fe2e400495"
+
 if [[ -z "${MS_ASSET_DIR}" ]]; then
     MS_ASSET_DIR="$HOME/.maniskill"
 fi

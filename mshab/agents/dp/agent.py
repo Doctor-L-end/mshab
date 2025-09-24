@@ -21,6 +21,9 @@ from mshab.agents.dp.conditional_unet1d import ConditionalUnet1D
 # 从自定义模块导入普通卷积网络
 from mshab.agents.dp.plain_conv import PlainConv
 
+from mshab.vis import robust_normalize_to_01 # 用于图像归一化
+import torchvision.transforms as T
+
 # 定义Agent类，继承自nn.Module
 class Agent(nn.Module):
     def __init__(
@@ -45,6 +48,8 @@ class Agent(nn.Module):
         self.obs_horizon = obs_horizon
         self.act_horizon = act_horizon
         self.pred_horizon = pred_horizon
+
+        self.normalize_rgbd = T.Normalize(mean=[0.485, 0.456, 0.406, 0.5], std=[0.229, 0.224, 0.225, 0.5])
 
         # 从观测空间中提取所有图像类型的键（排除"state"）
         self.image_keys = [k for k in single_observation_space.keys() if k != "state"]
@@ -102,20 +107,31 @@ class Agent(nn.Module):
 
     # 定义观测编码方法
     def encode_obs(self, obs_seq, eval_mode):
+        # # 处理深度图：使用tanh变换进行归一化
+        # for dk in self.depth_keys:
+        #     # 将深度图转换为浮点数并应用变换
+        #     obs_seq[dk] = 1 - torch.tanh(obs_seq[dk].float() / 1000)
         
-        # print(self.depth_keys) # ['fetch_head_depth', 'fetch_hand_depth']
-        # print(self.image_keys) # ['fetch_head_depth', 'fetch_hand_depth']
-        # print(obs_seq.keys()) # dict_keys(['state', 'fetch_head_depth', 'fetch_hand_depth'])
-        
-        # 处理深度图：使用tanh变换进行归一化
-        for dk in self.depth_keys:
-            # 将深度图转换为浮点数并应用变换
-            obs_seq[dk] = 1 - torch.tanh(obs_seq[dk].float() / 1000)
-        
+        # # 将所有图像数据沿通道维度拼接
+        # img_seq = torch.cat(
+        #     [obs_seq[k] for k in self.image_keys], dim=2
+        # )  # 形状变为(B, obs_horizon, C, H, W)
+
+        img_seq = []
+        img1 = torch.cat([robust_normalize_to_01(obs_seq['fetch_head_rgb']), robust_normalize_to_01(obs_seq['fetch_head_depth'])], dim=2)
+        img1 = img1.view(-1, img1.shape[2], img1.shape[3], img1.shape[4])
+        img1 = self.normalize_rgbd(img1)
+        img1 = img1.view(-1, self.obs_horizon, img1.shape[1], img1.shape[2], img1.shape[3])
+        img2 = torch.cat([robust_normalize_to_01(obs_seq['fetch_hand_rgb']), robust_normalize_to_01(obs_seq['fetch_hand_depth'])], dim=2)
+        img2 = img2.view(-1, img2.shape[2], img2.shape[3], img2.shape[4])
+        img2 = self.normalize_rgbd(img2)
+        img2 = img2.view(-1, self.obs_horizon, img2.shape[1], img2.shape[2], img2.shape[3])       
+        img_seq.append(img1)
+        img_seq.append(img2)
         # 将所有图像数据沿通道维度拼接
         img_seq = torch.cat(
-            [obs_seq[k] for k in self.image_keys], dim=2
-        )  # 形状变为(B, obs_horizon, C, H, W)
+            img_seq, dim=2
+        )  # 形状变为(B, obs_horizon, C*cam_num, H, W)
         
         # 获取batch大小
         B = img_seq.shape[0]

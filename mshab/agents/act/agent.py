@@ -86,7 +86,7 @@ class Agent(nn.Module):
             img_seq.append(robust_normalize_to_01(obs['fetch_head_rgb']))
             img_seq.append(robust_normalize_to_01(obs['fetch_hand_rgb']))
 
-        # 将所有图像数据沿通道维度拼接
+        # 将所有图像数据拼接
         img_seq_ = torch.cat(
             img_seq, dim=1
         )  # 形状变为(B, obs_horizon * cam_num, C, H, W) obs_horizon一般指定为1
