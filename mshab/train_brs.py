@@ -204,6 +204,7 @@ class BRSDataset(ClosableDataset):
                 obs, act = f[k]["obs"], f[k]["actions"][:]
 
                 obs_agent = obs["agent"]
+                # obs_extra = obs["extra"]
                 obs_extra = obs["extra"]["tcp_pose_wrt_base"]
 
                 # 根据成功标志截断轨迹
@@ -330,7 +331,7 @@ class BRSDataset(ClosableDataset):
         obs_seq = {}
     
         _act_seq = []
-        for i in reversed(range(self.obs_horizon)):
+        for i in range(self.obs_horizon):
             index_start = start - self.obs_horizon + 1 + i
             index_end = index_start + self.pred_horizon
             # 处理动作序列

@@ -208,6 +208,7 @@ class DPDataset(ClosableDataset):  # 将所有数据加载到内存中
                 obs, act = f[k]["obs"], f[k]["actions"][:]
 
                 obs_agent = obs["agent"]
+                # obs_extra = obs["extra"]
                 obs_extra = obs["extra"]["tcp_pose_wrt_base"]
 
                 # 根据成功标志截断轨迹

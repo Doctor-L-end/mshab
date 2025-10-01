@@ -8,7 +8,7 @@ num_dataload_workers=8
 num_iterations=1_000_000
 
 TASK=set_table
-SUBTASK=close
+SUBTASK=open
 SPLIT=train
 OBJ=fridge
 
@@ -16,7 +16,10 @@ OBJ=fridge
 ENV_ID="$(echo $SUBTASK | sed 's/\b\(.\)/\u\1/g')SubtaskTrain-v0"
 WORKSPACE="mshab_exps"
 GROUP=$TASK-rcad-brs-$SUBTASK
+
+# EXP_NAME="$ENV_ID/$GROUP/brs-$SUBTASK-$OBJ-local-trajs_per_obj=$TRAJS_PER_OBJ"
 EXP_NAME="$ENV_ID/$GROUP/brs-$SUBTASK-$OBJ-local-without_extra-trajs_per_obj=$TRAJS_PER_OBJ"
+
 # shellcheck disable=SC2001
 PROJECT_NAME="MS-HAB-RCAD-brs"
 

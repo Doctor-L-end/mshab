@@ -162,8 +162,11 @@ class FetchPointcloudFromDepthObservationWrapper(gym.ObservationWrapper):
 
     def observation(self, observation):
         # print(observation.keys()) # dict_keys(['agent', 'extra', 'sensor_data', 'sensor_param'])
+
         agent_obs = observation["agent"]
+        # extra_obs = observation["extra"]
         extra_obs = observation["extra"]["tcp_pose_wrt_base"]
+
         # print(agent_obs.keys()) # dict_keys(['qpos', 'qvel'])
         # print(extra_obs.keys()) # dict_keys(['tcp_pose_wrt_base', 'obj_pose_wrt_base', 'goal_pos_wrt_base', 'is_grasped'])
         # for k, v in agent_obs.items():
@@ -248,8 +251,11 @@ class FetchRGBDObservationWrapper(gym.ObservationWrapper):
 
     def observation(self, observation):
         # print(observation.keys()) # dict_keys(['agent', 'extra', 'sensor_data', 'sensor_param'])
+
         agent_obs = observation["agent"]
+        # extra_obs = observation["extra"]
         extra_obs = observation["extra"]["tcp_pose_wrt_base"]
+
         fetch_head_depth = self.transforms(observation["sensor_data"]["fetch_head"]["depth"].permute(
             0, 3, 1, 2
         ))
@@ -315,7 +321,8 @@ class FetchPointcloudObservationWrapper(gym.ObservationWrapper):
         # print(observation["pointcloud"]["segmentation"].shape) # torch.Size([252, 32768, 1])
       
         agent_obs = observation["agent"]
-        extra_obs = observation["extra"]
+        # extra_obs = observation["extra"]
+        extra_obs = observation["extra"]["tcp_pose_wrt_base"]
 
         pointcloud = (
             dict(
