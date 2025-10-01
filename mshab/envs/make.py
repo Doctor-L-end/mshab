@@ -10,7 +10,9 @@ from mani_skill.vector.wrappers.gymnasium import ManiSkillVectorEnv
 from mshab.envs.wrappers import (
     DebugVideoGPU,
     FetchActionWrapper,
-    FetchDepthObservationWrapper,
+    FetchRGBDObservationWrapper,
+    FetchPointcloudFromDepthObservationWrapper,
+    FetchPointcloudObservationWrapper,
     FrameStack,
     RecordEpisode,
     StackedDictObservationWrapper,
@@ -49,6 +51,7 @@ class EnvConfig:
     make_env: bool = True
     # NOTE (arth): env supports rgbd, pointcloud, segmentation, etc per ManiSkill; we use depth for provided baselines
     obs_mode: str = "rgbd" #"depth"
+    get_pointcloud_from_depth: bool = False
     render_mode: str = "all"
     shader_dir: str = "minimal"
     sim_backend: str = "gpu"
@@ -114,10 +117,21 @@ def make_env(
     for wrapper in wrappers:
         env = wrapper(env)
 
-    env = FetchDepthObservationWrapper(
-        env, cat_state=env_cfg.cat_state, cat_pixels=env_cfg.cat_pixels
-    )
-    if env_cfg.frame_stack is not None:
+    if env_cfg.obs_mode == "rgbd" and env_cfg.get_pointcloud_from_depth == False:
+        env = FetchRGBDObservationWrapper(
+            env, cat_state=env_cfg.cat_state, cat_pixels=env_cfg.cat_pixels
+        )
+    elif env_cfg.obs_mode == "rgbd" and env_cfg.get_pointcloud_from_depth == True:
+        env = FetchPointcloudFromDepthObservationWrapper(
+            env, cat_state=env_cfg.cat_state, cat_pixels=env_cfg.cat_pixels
+        )
+    elif env_cfg.obs_mode == "pointcloud":
+        env = FetchPointcloudObservationWrapper(
+            env, cat_state=env_cfg.cat_state, cat_pixels=env_cfg.cat_pixels
+        )
+    else:
+        raise NotImplementedError
+    if env_cfg.frame_stack is not None and env_cfg.obs_mode == "rgbd":
         env = FrameStack(
             env,
             num_stack=env_cfg.frame_stack,

@@ -2,7 +2,9 @@ from .action import FetchActionWrapper
 from .collect_data import FetchCollectRobotInitWrapper
 from .debug_video_gpu import DebugVideoGPU
 from .observation import (
-    FetchDepthObservationWrapper,
+    FetchRGBDObservationWrapper,
+    FetchPointcloudFromDepthObservationWrapper,
+    FetchPointcloudObservationWrapper,
     FrameStack,
     StackedDictObservationWrapper,
 )

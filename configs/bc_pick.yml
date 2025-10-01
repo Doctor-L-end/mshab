@@ -4,7 +4,7 @@ eval_env:
   make_env: True
 
   env_id: "PickSubtaskTrain-v0"
-  num_envs: 252
+  num_envs: 189
   max_episode_steps: 200
  
   continuous_task: True # 为True时，episode不会因为完成task而结束，而是继续下一个task，直到max_episode_steps;为False时，完成task后episode结束，这时success_at_once=success_once

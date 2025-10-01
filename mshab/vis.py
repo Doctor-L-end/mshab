@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import matplotlib.pyplot as plt
 import os
+import open3d as o3d
 
 def robust_normalize_to_01(data):
     """
@@ -155,6 +156,135 @@ def visualize_batch(images, title="", ncols=4):
     plt.suptitle(title)
     plt.tight_layout()
     plt.show()
+
+def visualize_point_cloud_open3d(point_cloud):
+    """
+    使用Open3D可视化单一批次的点云
+    
+    参数:
+        point_cloud: 形状为 (N, 6) 的点云数据
+        batch_idx: 要可视化的批次索引
+    """
+    # 确保张量在CPU上
+    if isinstance(point_cloud, torch.Tensor):
+        point_cloud = point_cloud.detach().cpu().numpy()
+    
+    # 创建Open3D点云对象
+    pcd = o3d.geometry.PointCloud()
+    
+    # 设置点云坐标
+    pcd.points = o3d.utility.Vector3dVector(point_cloud[:, :3])
+    
+    # 设置点云颜色（假设RGB值在[0,1]范围内）
+    pcd.colors = o3d.utility.Vector3dVector(point_cloud[:, 3:6])
+    
+    # 可视化
+    o3d.visualization.draw_geometries([pcd])
+
+def save_pointcloud_to_pcd(point_cloud, filename):
+    """
+    将点云张量保存为 PCD 文件
+    
+    参数:
+        point_cloud_tensor: 形状为 (N, 6) 的点云张量
+        filename: 保存的文件路径（例如: "/path/to/save/pointcloud.pcd"）
+        batch_idx: 要保存的批次索引
+    """
+    if isinstance(point_cloud, torch.Tensor):
+        point_cloud = point_cloud.detach().cpu().numpy()
+    
+    
+    # 创建 Open3D 点云对象
+    pcd = o3d.geometry.PointCloud()
+    
+    # 设置点坐标（前3列）
+    points = point_cloud[:, :3].astype(np.float32)
+    pcd.points = o3d.utility.Vector3dVector(points)
+    
+    # 设置点颜色（后3列），并确保值范围在 [0, 1] 之间
+    colors = point_cloud[:, 3:6].astype(np.float32)
+    if np.max(colors) > 1.0:
+        colors = np.clip(colors, 0, 255) / 255.0
+    pcd.colors = o3d.utility.Vector3dVector(colors)
+    
+    # 保存为 PCD 文件
+    o3d.io.write_point_cloud(filename, pcd)
+    print(f"点云已成功保存到: {filename}")
+
+def normalize_point_cloud(point_cloud):
+    """
+    对形状为(B, T, N, 6)的点云进行归一化
+    前三个坐标归一化到[-1, 1]，后三个颜色值归一化到[0, 1]
+    支持PyTorch Tensor和NumPy数组输入，输出类型与输入一致
+    
+    参数:
+        point_cloud: 形状为(B, T, N, 6)的张量或数组
+        
+    返回:
+        归一化后的点云，形状与输入相同，类型与输入一致
+    """
+    # 检查输入类型并保存原始类型和设备信息
+    is_tensor = torch.is_tensor(point_cloud)
+    device = None
+    dtype = None
+    
+    if is_tensor:
+        # 保存原始设备信息和数据类型
+        device = point_cloud.device
+        dtype = point_cloud.dtype
+        # 转换为NumPy数组
+        point_cloud_np = point_cloud.cpu().numpy()
+    else:
+        # 已经是NumPy数组
+        point_cloud_np = point_cloud
+    
+    # 获取形状信息
+    B, T, N, _ = point_cloud_np.shape
+    
+    # 分离坐标和颜色
+    coords = point_cloud_np[..., :3]  # 前三个坐标为空间坐标
+    colors = point_cloud_np[..., 3:]  # 后三个坐标为颜色信息
+    
+    # 1. 坐标归一化到[-1, 1]
+    # 重塑以便计算每个样本的最小最大值
+    reshaped_coords = coords.reshape(B, T * N, 3)
+    min_coords = np.min(reshaped_coords, axis=1, keepdims=True)
+    max_coords = np.max(reshaped_coords, axis=1, keepdims=True)
+    
+    # 避免除零错误
+    range_coords = max_coords - min_coords
+    range_coords[range_coords == 0] = 1
+    
+    # 归一化到[0, 1]然后映射到[-1, 1]
+    coords_normalized = 2 * ((coords - min_coords.reshape(B, 1, 1, 3)) / 
+                            range_coords.reshape(B, 1, 1, 3)) - 1
+    
+    # 2. 颜色归一化到[0, 1]
+    # 检查颜色是否已经在[0, 1]范围内
+    reshaped_colors = colors.reshape(B, T * N, 3)
+    min_colors = np.min(reshaped_colors, axis=1)
+    max_colors = np.max(reshaped_colors, axis=1)
+    
+    # 如果颜色值不在[0, 1]范围内，则进行归一化
+    if np.any(min_colors < 0) or np.any(max_colors > 1):
+        # 假设颜色值在[0, 255]范围内，需要归一化到[0, 1]
+        colors_normalized = colors / 255.0
+    else:
+        # 颜色值已经在[0, 1]范围内，保持不变
+        colors_normalized = colors
+    
+    # 合并归一化后的坐标和颜色
+    normalized_point_cloud_np = np.concatenate([coords_normalized, colors_normalized], axis=-1)
+    
+    # 转换回原始类型
+    if is_tensor:
+        # 转换为PyTorch Tensor并放回原始设备
+        normalized_point_cloud = torch.from_numpy(normalized_point_cloud_np).to(dtype).to(device)
+    else:
+        # 保持为NumPy数组
+        normalized_point_cloud = normalized_point_cloud_np
+    
+    return normalized_point_cloud
 
 # 测试函数
 def test_multidimensional_visualization():

@@ -19,15 +19,16 @@ import torch  # PyTorch深度学习框架
 import torch.optim as optim  # 优化器
 from torch.utils.data.sampler import BatchSampler, RandomSampler  # 数据采样
 import torchvision.transforms as T
-from mani_skill import ASSET_DIR  # ManiSkill资产目录
-from mani_skill.utils import common  # ManiSkill通用工具
-
 from diffusers.optimization import get_scheduler  # 学习率调度器
 from diffusers.training_utils import EMAModel  # 指数移动平均模型
 
+from mani_skill import ASSET_DIR  # ManiSkill资产目录
+from mani_skill.utils import common  # ManiSkill通用工具
+
 # 从自定义模块导入
-from mshab.agents.dp import Agent  # 扩散策略代理
-from mshab.agents.dp.utils import IterationBasedBatchSampler, worker_init_fn  # 数据采样工具
+from mshab.agents.brs import Agent  # 扩散策略代理
+from mshab.agents.brs.utils import IterationBasedBatchSampler, worker_init_fn  # 数据采样工具
+from mshab.agents.brs.utils import _get_merged_pc_vectorized
 from mshab.envs.make import EnvConfig, make_env  # 环境配置和创建
 from mshab.utils.array import to_tensor  # 数组转张量
 from mshab.utils.config import parse_cfg  # 配置解析
@@ -36,23 +37,18 @@ from mshab.utils.dataset import ClosableDataLoader, ClosableDataset  # 可关闭
 from mshab.utils.logger import Logger, LoggerConfig  # 日志记录
 from mshab.utils.time import NonOverlappingTimeProfiler  # 时间分析器
 
-# 定义扩散策略的配置类
-@dataclass
-class DPConfig:
-    name: str = "diffusion_policy"  # 算法名称
+from mshab.vis import visualize_point_cloud_open3d, save_pointcloud_to_pcd
 
-    # 扩散策略相关参数
-    lr: float = 1e-4  # 学习率
+# BRS算法的配置类
+@dataclass
+class BRSConfig:
+    name: str = "brs"  # 算法名称
+
+    # BRS模型训练参数
+    lr: float = 7e-4  # 学习率
     batch_size: int = 256  # 批量大小
     obs_horizon: int = 2  # 观测历史长度
-    act_horizon: int = 8  # 动作执行长度
-    pred_horizon: int = 16  # 预测长度
-    diffusion_step_embed_dim: int = 64  # 扩散步骤嵌入维度
-    unet_dims: List[int] = default_field(  # UNet网络维度
-        [64, 128, 256]
-    )  
-    n_groups: int = 8  # 分组归一化的组数
-    encoded_image_feature_size: int = 1024  # 编码图像特征大小
+    pred_horizon: int = 8  # 预测动作序列长度
 
     # 数据集相关参数
     data_dir_fp: str = (  # 演示数据集路径
@@ -78,7 +74,7 @@ class DPConfig:
 class TrainConfig:
     seed: int  # 随机种子
     eval_env: EnvConfig  # 评估环境配置
-    algo: DPConfig  # 算法配置
+    algo: BRSConfig  # 算法配置
     logger: LoggerConfig  # 日志记录器配置
 
     wandb_id: Optional[str] = None  # Weights & Biases ID
@@ -162,17 +158,17 @@ def recursive_h5py_to_numpy(h5py_obs, slice=None):
         return tuple(recursive_h5py_to_numpy(x, slice) for x in h5py_obs)
     if slice is not None:
         return h5py_obs[slice]
-    return h5py_obs[:]
+    return h5py_obs[:] # 当 h5py_obs是一个 h5py Dataset 对象时，对其进行切片操作（如 [slice]或 [:]）会自动返回一个 NumPy 数组。这是 h5py 库的设计特性，不需要显式调用转换函数。
 
-# 定义扩散策略数据集类
-class DPDataset(ClosableDataset):  # 将所有数据加载到内存中
+# BRS数据集类（继承自可关闭数据集）
+class BRSDataset(ClosableDataset):
     def __init__(
         self,
         data_path,
         obs_horizon,
         pred_horizon,
         control_mode,
-        trajs_per_obj="all",
+        trajs_per_obj = "all",  # 每个物体的轨迹数
         max_image_cache_size=0,
         truncate_trajectories_at_success=False,
     ):
@@ -189,9 +185,9 @@ class DPDataset(ClosableDataset):  # 将所有数据加载到内存中
         trajectories = dict(actions=[], observations=[])
         num_cached = 0
         self.h5_files = []
-
-        self.transforms = T.Compose([T.Resize((224, 224), antialias=True)])
         
+        self.transforms = T.Compose([T.Resize((224, 224), antialias=True)])
+
         # 遍历所有HDF5文件
         for fp_num, fp in enumerate(h5_fps):
             f = h5py.File(fp, "r")
@@ -232,18 +228,14 @@ class DPDataset(ClosableDataset):  # 将所有数据加载到内存中
                     state_obs_list.extend(obs_extra_processed.values())
                 else:
                     state_obs_list.append(obs_extra_processed)
-                    
+                
                 state_obs_list = [
                     x[:, None] if len(x.shape) == 1 else x for x in state_obs_list
                 ]
                 state_obs = torch.from_numpy(np.concatenate(state_obs_list, axis=1))
                 act = torch.from_numpy(act)
-
-                # print(obs.keys()) # <KeysViewHDF5 ['agent', 'extra', 'sensor_param', 'sensor_data']>
-                # print(obs["sensor_data"].keys()) # <KeysViewHDF5 ['fetch_head', 'fetch_hand']>
-                # print(obs["sensor_data"]["fetch_head"].keys()) # <KeysViewHDF5 ['depth', 'rgb']>
-           
-                # 处理图像观测
+            
+                # 处理点云观测
                 pixel_obs = dict(
                     fetch_head_rgb=obs["sensor_data"]["fetch_head"]["rgb"],
                     fetch_head_depth=obs["sensor_data"]["fetch_head"]["depth"],
@@ -263,17 +255,31 @@ class DPDataset(ClosableDataset):  # 将所有数据加载到内存中
                     num_cached += len(act)
                 else:
                     num_uncached_this_file += len(act)
+                # print(obs['extra'].keys()) # 'tcp_pose_wrt_base', 'obj_pose_wrt_base', 'goal_pos_wrt_base', 'is_grasped'
+                # print(obs['agent'].keys()) # 'qpos', 'qvel'
+                # print(obs['sensor_param'].keys()) # 'fetch_head', 'fetch_hand'
+                
+                obs = to_tensor(recursive_h5py_to_numpy(obs, slice=slice(success_cutoff + 1)))
+                sensor_data = obs["sensor_data"]
+                if sensor_data["fetch_head"]["depth"].ndim == 4:
+                    sensor_data["fetch_head"]["depth"] = sensor_data["fetch_head"]["depth"].squeeze(-1)
+                if sensor_data["fetch_hand"]["depth"].ndim == 4:
+                    sensor_data["fetch_hand"]["depth"] = sensor_data["fetch_hand"]["depth"].squeeze(-1)
+
+                pointcloud_obs = _get_merged_pc_vectorized(
+                    sensor_data, obs["sensor_param"], success_cutoff+1
+                )
 
                 # 存储轨迹数据
                 trajectories["actions"].append(act)
-                trajectories["observations"].append(dict(state=state_obs, **pixel_obs))
+                pixel_obs = {} # 取消图像数据存储 节省内存
+                trajectories["observations"].append(dict(state=state_obs, pointcloud=pointcloud_obs, **pixel_obs))
 
             # 关闭文件或保留打开
             if num_uncached_this_file == 0:
                 f.close()
             else:
                 self.h5_files.append(f)
-
         # 根据控制模式设置动作填充
         if (
             "delta_pos" in control_mode
@@ -322,7 +328,24 @@ class DPDataset(ClosableDataset):  # 将所有数据加载到内存中
 
         obs_traj = self.trajectories["observations"][traj_idx]
         obs_seq = {}
-        
+    
+        _act_seq = []
+        for i in reversed(range(self.obs_horizon)):
+            index_start = start - self.obs_horizon + 1 + i
+            index_end = index_start + self.pred_horizon
+            # 处理动作序列
+            act_seq = self.trajectories["actions"][traj_idx][max(0, index_start) : index_end]
+            # 在轨迹开始前填充
+            if index_start < 0:
+                act_seq = torch.cat([act_seq[0].repeat(-index_start, 1), act_seq], dim=0)
+            # 在轨迹结束后填充
+            if index_end > L:
+                gripper_action = act_seq[-1, -1]
+                pad_action = torch.cat((self.pad_action_arm, gripper_action[None]), dim=0)
+                act_seq = torch.cat([act_seq, pad_action.repeat(index_end - L, 1)], dim=0)
+            _act_seq.append(act_seq)
+        act_seq = torch.stack(_act_seq, dim=0)  # (obs_horizon, pred_horizon, act_dim)
+
         # 处理观测序列
         for k, v in obs_traj.items():
             obs_seq[k] = v[
@@ -336,23 +359,12 @@ class DPDataset(ClosableDataset):  # 将所有数据加载到内存中
                 pad_obs_seq = torch.stack([obs_seq[k][0]] * abs(start), dim=0)
                 obs_seq[k] = torch.cat((pad_obs_seq, obs_seq[k]), dim=0)
 
-        # 处理动作序列
-        act_seq = self.trajectories["actions"][traj_idx][max(0, start) : end]
-        # 在轨迹开始前填充
-        if start < 0:
-            act_seq = torch.cat([act_seq[0].repeat(-start, 1), act_seq], dim=0)
-        # 在轨迹结束后填充
-        if end > L:
-            gripper_action = act_seq[-1, -1]
-            pad_action = torch.cat((self.pad_action_arm, gripper_action[None]), dim=0)
-            act_seq = torch.cat([act_seq, pad_action.repeat(end - L, 1)], dim=0)
-            
         # 验证序列长度
         assert (
             obs_seq["state"].shape[0] == self.obs_horizon
-            and act_seq.shape[0] == self.pred_horizon
+            and act_seq.shape[1] == self.pred_horizon
+            and act_seq.shape[0] == self.obs_horizon
         )
-        
         return {
             "observations": obs_seq,
             "actions": act_seq,
@@ -367,100 +379,53 @@ class DPDataset(ClosableDataset):  # 将所有数据加载到内存中
         for h5_file in self.h5_files:
             h5_file.close()
 
-# 主程序入口
-if __name__ == "__main__":
-    # 获取配置文件路径
-    PASSED_CONFIG_PATH = sys.argv[1]
-    # 解析并获取训练配置
-    cfg = get_mshab_train_cfg(parse_cfg(default_cfg_path=PASSED_CONFIG_PATH))
-
-    print("cfg:", cfg, flush=True)
-
+# 训练主函数
+def train(cfg: TrainConfig):
     # 设置随机种子
     random.seed(cfg.seed)
     np.random.seed(cfg.seed)
     torch.manual_seed(cfg.seed)
     torch.backends.cudnn.deterministic = cfg.algo.torch_deterministic
 
-    # 验证参数约束
-    assert cfg.algo.obs_horizon + cfg.algo.act_horizon - 1 <= cfg.algo.pred_horizon
-    assert (
-        cfg.algo.obs_horizon >= 1
-        and cfg.algo.act_horizon >= 1
-        and cfg.algo.pred_horizon >= 1
-    )
-
-    # 设置设备（GPU优先）
+    # 设置设备（优先使用GPU）
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # -------------------------------------------------------------------------------------------------
-    # 创建环境
-    # -------------------------------------------------------------------------------------------------
-    print("making eval env", flush=True)
+    # 创建评估环境
+    print("创建评估环境中...")
     eval_envs = make_env(
         cfg.eval_env,
-        video_path=cfg.logger.eval_video_path,
+        video_path=cfg.logger.eval_video_path,  # 评估视频保存路径
     )
     # 验证动作空间类型
     assert isinstance(
         eval_envs.single_action_space, gym.spaces.Box
-    ), "only continuous action space is supported"
+    ), "仅支持连续动作空间"
+    print("创建完成")
 
-    # 重置环境
+    # 初始化环境
     eval_obs, _ = eval_envs.reset(seed=cfg.seed + 1_000_000)
-    print("made", flush=True)
+    eval_envs.action_space.seed(cfg.seed + 1_000_000)
 
     # -------------------------------------------------------------------------------------------------
-    # 创建代理和日志记录器
+    # 智能体和优化器初始化
     # -------------------------------------------------------------------------------------------------
-    print("making agent and logger...", flush=True)
+    agent = Agent(eval_envs, args=cfg.algo).to(device)
+    ema = EMAModel(parameters=agent.parameters(), power=0.75)
+    ema_agent = Agent(eval_envs, args=cfg.algo).to(device)
 
-    # 创建扩散策略代理
-    agent = Agent(
-        single_observation_space=eval_envs.single_observation_space,
-        single_action_space=eval_envs.single_action_space,
-        obs_horizon=cfg.algo.obs_horizon,
-        act_horizon=cfg.algo.act_horizon,
-        pred_horizon=cfg.algo.pred_horizon,
-        diffusion_step_embed_dim=cfg.algo.diffusion_step_embed_dim,
-        unet_dims=cfg.algo.unet_dims,
-        n_groups=cfg.algo.n_groups,
-        device=device,
-    ).to(device)
-
-    # 创建优化器
-    optimizer = optim.AdamW(
-        params=agent.parameters(),
+    optimizer = torch.optim.Adam(
+        agent.parameters(),
         lr=cfg.algo.lr,
-        betas=(0.95, 0.999),
-        weight_decay=1e-6,
     )
 
     # 创建学习率调度器
     lr_scheduler = get_scheduler(
         name="cosine",
         optimizer=optimizer,
-        num_warmup_steps=500,
+        num_warmup_steps=1000,
         num_training_steps=cfg.algo.num_iterations,
     )
 
-    # 创建指数移动平均模型
-    ema = EMAModel(parameters=agent.parameters(), power=0.75)
-    ema_agent = Agent(
-        single_observation_space=eval_envs.single_observation_space,
-        single_action_space=eval_envs.single_action_space,
-        obs_horizon=cfg.algo.obs_horizon,
-        act_horizon=cfg.algo.act_horizon,
-        pred_horizon=cfg.algo.pred_horizon,
-        diffusion_step_embed_dim=cfg.algo.diffusion_step_embed_dim,
-        unet_dims=cfg.algo.unet_dims,
-        n_groups=cfg.algo.n_groups,
-        device=device,
-    ).to(device)
-
-    # -------------------------------------------------------------------------------------------------
-    # 创建日志记录器
-    # -------------------------------------------------------------------------------------------------
     # 模型保存函数
     def save(save_path):
         ema.copy_to(ema_agent.parameters())
@@ -482,36 +447,31 @@ if __name__ == "__main__":
         optimizer.load_state_dict(checkpoint["optimizer"])
         lr_scheduler.load_state_dict(checkpoint["lr_scheduler"])
 
-    # 创建日志记录器
+    # 初始化日志记录器
     logger = Logger(
         logger_cfg=cfg.logger,
-        save_fn=save,
+        save_fn=save,  # 注册保存函数
     )
 
-    # 加载模型检查点（如果存在）
+    # 加载模型检查点（如果提供）
     if cfg.model_ckpt is not None:
         load(cfg.model_ckpt)
 
-    print("agent and logger made!", flush=True)
-
     # -------------------------------------------------------------------------------------------------
-    # 加载数据集
+    # 数据加载器初始化
     # -------------------------------------------------------------------------------------------------
-    print("loading dataset...", flush=True)
-
-    # 创建扩散策略数据集
-    dataset = DPDataset(
+    brs_dataset = BRSDataset(
         cfg.algo.data_dir_fp,
-        obs_horizon=cfg.algo.obs_horizon,
-        pred_horizon=cfg.algo.pred_horizon,
+        cfg.algo.obs_horizon,
+        cfg.algo.pred_horizon,
         control_mode=eval_envs.unwrapped.control_mode,
         trajs_per_obj=cfg.algo.trajs_per_obj,
         max_image_cache_size=cfg.algo.max_image_cache_size,
         truncate_trajectories_at_success=cfg.algo.truncate_trajectories_at_success,
     )
-    
+
     # 创建数据采样器
-    sampler = RandomSampler(dataset, replacement=False)
+    sampler = RandomSampler(brs_dataset, replacement=False)
     batch_sampler = BatchSampler(
         sampler, batch_size=cfg.algo.batch_size, drop_last=True
     )
@@ -519,7 +479,7 @@ if __name__ == "__main__":
     
     # 创建数据加载器
     train_dataloader = ClosableDataLoader(
-        dataset,
+        brs_dataset,
         batch_sampler=batch_sampler,
         num_workers=cfg.algo.num_dataload_workers,
         worker_init_fn=lambda worker_id: worker_init_fn(worker_id, base_seed=cfg.seed),
@@ -590,20 +550,23 @@ if __name__ == "__main__":
 
         # 准备观测数据
         obs_batch_dict = data_batch["observations"]
+
         obs_batch_dict = {
             k: v.cuda(non_blocking=True) for k, v in obs_batch_dict.items()
         }
         act_batch = data_batch["actions"].cuda(non_blocking=True)
-
+        # if iteration == 0:
+        #     save_pointcloud_to_pcd(obs_batch_dict['pointcloud'][0, -1].cpu().numpy(), 'debug_pointcloud.pcd')
+            # visualize_point_cloud_open3d(obs_batch_dict['pointcloud'][0, -1].cpu().numpy())
         # 计算损失
-        total_loss = agent.compute_loss(
-            obs_seq=obs_batch_dict,
+        loss = agent.compute_loss(
+            obs=obs_batch_dict,
             action_seq=act_batch,
         )
 
         # 反向传播和优化
         optimizer.zero_grad()
-        total_loss.backward()
+        loss.backward()
         optimizer.step()
         lr_scheduler.step()  # 更新学习率
 
@@ -611,7 +574,7 @@ if __name__ == "__main__":
         ema.step(agent.parameters())
 
         # 记录损失和学习率
-        logger.store("losses", loss=total_loss.item())
+        logger.store("losses", loss=loss.item())
         logger.store("charts", learning_rate=optimizer.param_groups[0]["lr"])
         timer.end(key="train")
 
@@ -670,3 +633,9 @@ if __name__ == "__main__":
     train_dataloader.close()
     eval_envs.close()
     logger.close()
+
+# 主程序入口
+if __name__ == "__main__":
+    PASSED_CONFIG_PATH = sys.argv[1]  # 从命令行参数获取配置路径
+    cfg = get_mshab_train_cfg(parse_cfg(default_cfg_path=PASSED_CONFIG_PATH))  # 解析配置
+    train(cfg)  # 启动训练

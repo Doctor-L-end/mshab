@@ -12,7 +12,7 @@ eval_env:
   cat_state: True
   cat_pixels: False
   frame_stack: null
-  stack: 2
+  stack: 1
 
   stationary_base: False
   stationary_torso: False
@@ -32,18 +32,13 @@ eval_env:
     target_randomization: False
 
 algo:
-  name: diffusion_policy
+  name: brs
 
-  # Diffusion Policy
-  lr: 1e-4
+  lr: 7e-4
   batch_size: 256
 
-  obs_horizon: 2                # Seems not very important in ManiSkill, 1, 2, 4 work well
-  act_horizon: 8                # Seems not very important in ManiSkill, 4, 8, 15 work well
-  pred_horizon: 16              # 16->8 leads to worse performance, maybe it is like generate a half image; 16->32, improvement is very marginal
-  diffusion_step_embed_dim: 64  # not very important
-  unet_dims: [64, 128, 256]     # default setting is about ~4.5M params
-  n_groups: 8                   # jigu says it is better to let each group have at least 8 channels; it seems 4 and 8 are similar
+  obs_horizon: 2      
+  pred_horizon: 8             
 
   # Dataset
   data_dir_fp: ~/.manisill/data/scene_datasets/replica_cad_dataset/rearrange-dataset/tidy_hosue/pick
@@ -61,7 +56,7 @@ algo:
 
 logger:
   workspace: mshab_exps
-  exp_name: dp-pick
+  exp_name: brs-pick
   clear_out: True
   
   tensorboard: True

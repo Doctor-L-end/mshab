@@ -3,12 +3,12 @@
 SEED=0
 
 TRAJS_PER_OBJ=1000
-MAX_IMAGE_CACHE_SIZE=300_000   # safe num for about 64 GiB system memory
+MAX_IMAGE_CACHE_SIZE=all
 num_dataload_workers=8
 num_iterations=1_000_000
 
 TASK=set_table
-SUBTASK=open
+SUBTASK=close
 SPLIT=train
 OBJ=fridge
 
@@ -16,7 +16,7 @@ OBJ=fridge
 ENV_ID="$(echo $SUBTASK | sed 's/\b\(.\)/\u\1/g')SubtaskTrain-v0"
 WORKSPACE="mshab_exps"
 GROUP=$TASK-rcad-dp-$SUBTASK
-EXP_NAME="$ENV_ID/$GROUP/dp-$SUBTASK-$OBJ-local-trajs_per_obj=$TRAJS_PER_OBJ"
+EXP_NAME="$ENV_ID/$GROUP/dp-$SUBTASK-$OBJ-local-without_extra-trajs_per_obj=$TRAJS_PER_OBJ"
 # shellcheck disable=SC2001
 PROJECT_NAME="MS-HAB-RCAD-dp"
 

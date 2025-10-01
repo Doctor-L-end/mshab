@@ -3,8 +3,8 @@
 SEED=0
 
 TRAJS_PER_OBJ=1000
-MAX_IMAGE_CACHE_SIZE=300_000   # safe num for about 64 GiB system memory
-num_dataload_workers=2
+MAX_IMAGE_CACHE_SIZE=all
+num_dataload_workers=8
 num_iterations=1_000_000
 
 TASK=set_table
@@ -56,7 +56,7 @@ args=(
     "algo.save_freq=5000"
     "eval_env.make_env=True"
     "eval_env.obs_mode=$OBS_MODE"
-    "eval_env.num_envs=252"
+    "eval_env.num_envs=189"
     "eval_env.max_episode_steps=200"
     "eval_env.record_video=False"
     "eval_env.info_on_video=True"
