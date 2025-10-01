@@ -332,7 +332,7 @@ class BRSDataset(ClosableDataset):
     
         _act_seq = []
         for i in range(self.obs_horizon):
-            index_start = start - self.obs_horizon + 1 + i
+            index_start = start + i
             index_end = index_start + self.pred_horizon
             # 处理动作序列
             act_seq = self.trajectories["actions"][traj_idx][max(0, index_start) : index_end]
