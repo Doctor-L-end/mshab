@@ -12,7 +12,7 @@ eval_env:
   cat_state: True
   cat_pixels: False
   frame_stack: null
-  stack: 1
+  stack: 2
 
   stationary_base: False
   stationary_torso: False

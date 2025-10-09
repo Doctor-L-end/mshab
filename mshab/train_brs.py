@@ -557,8 +557,7 @@ def train(cfg: TrainConfig):
         }
         act_batch = data_batch["actions"].cuda(non_blocking=True)
         # if iteration == 0:
-        #     save_pointcloud_to_pcd(obs_batch_dict['pointcloud'][0, -1].cpu().numpy(), 'debug_pointcloud.pcd')
-            # visualize_point_cloud_open3d(obs_batch_dict['pointcloud'][0, -1].cpu().numpy())
+        #     save_pointcloud_to_pcd(obs_batch_dict['pointcloud'][0, -1].cpu().numpy(), 'brs_4096.pcd')
         # 计算损失
         loss = agent.compute_loss(
             obs=obs_batch_dict,

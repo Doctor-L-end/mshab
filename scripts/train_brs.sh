@@ -50,7 +50,7 @@ args=(
     "eval_env.env_id=$ENV_ID"
     "eval_env.task_plan_fp=$MS_ASSET_DIR/data/scene_datasets/replica_cad_dataset/rearrange/task_plans/$TASK/$SUBTASK/$SPLIT/$OBJ.json"
     "eval_env.spawn_data_fp=$MS_ASSET_DIR/data/scene_datasets/replica_cad_dataset/rearrange/spawn_data/$TASK/$SUBTASK/$SPLIT/spawn_data.pt"
-    "eval_env.stack=1"
+    "eval_env.stack=2"
     "algo.num_iterations=$num_iterations"
     "algo.trajs_per_obj=$TRAJS_PER_OBJ"
     "algo.data_dir_fp=$data_dir_fp"
@@ -73,7 +73,7 @@ args=(
     "logger.workspace=$WORKSPACE"
 )
 
-RESUME=False
+RESUME=True
 if [ -f "$RESUME_CONFIG" ] && [ -f "$RESUME_LOGDIR/models/latest.pt" ] && [ "$RESUME" = "True" ]; then
     echo "RESUMING"
     SAPIEN_NO_DISPLAY=1 python -m mshab.train_brs "$RESUME_CONFIG" RESUME_LOGDIR="$RESUME_LOGDIR" \
