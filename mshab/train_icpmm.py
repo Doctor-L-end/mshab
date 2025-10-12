@@ -26,9 +26,9 @@ from mani_skill import ASSET_DIR  # ManiSkill资产目录
 from mani_skill.utils import common  # ManiSkill通用工具
 
 # 从自定义模块导入
-from mshab.agents.brs import Agent  # 扩散策略代理
-from mshab.agents.brs.utils import IterationBasedBatchSampler, worker_init_fn  # 数据采样工具
-from mshab.agents.brs.utils import _get_merged_pc_vectorized
+from mshab.agents.icpmm import Agent  # 扩散策略代理
+from mshab.agents.icpmm.utils import IterationBasedBatchSampler, worker_init_fn  # 数据采样工具
+from mshab.agents.icpmm.utils import _get_merged_pc_vectorized
 from mshab.envs.make import EnvConfig, make_env  # 环境配置和创建
 from mshab.utils.array import to_tensor  # 数组转张量
 from mshab.utils.config import parse_cfg  # 配置解析
@@ -39,15 +39,15 @@ from mshab.utils.time import NonOverlappingTimeProfiler  # 时间分析器
 
 from mshab.vis import visualize_point_cloud_open3d, save_pointcloud_to_pcd
 
-# BRS算法的配置类
+# ICPMM算法的配置类
 @dataclass
-class BRSConfig:
-    name: str = "brs"  # 算法名称
+class ICPMMConfig:
+    name: str = "icpmm"  # 算法名称
 
-    # BRS模型训练参数
-    lr: float = 7e-4  # 学习率
+    # icpmm模型训练参数
+    lr: float = 1e-4  # 学习率
     batch_size: int = 256  # 批量大小
-    obs_horizon: int = 2  # 观测历史长度
+    obs_horizon: int = 16  # 观测历史长度
     pred_horizon: int = 8  # 预测动作序列长度
 
     # 数据集相关参数
@@ -61,11 +61,11 @@ class BRSConfig:
     num_dataload_workers: int = 0  # 数据加载工作线程数
 
     # 实验相关参数
-    num_iterations: int = 1_000_000  # 总迭代次数
+    num_iterations: int = 100_000  # 总迭代次数
     eval_episodes: Optional[int] = None  # 评估周期数
     log_freq: int = 1000  # 日志记录频率
-    eval_freq: int = 5000  # 评估频率
-    save_freq: int = 5000  # 模型保存频率
+    eval_freq: int = 2000  # 评估频率
+    save_freq: int = 2000  # 模型保存频率
     torch_deterministic: bool = True  # 是否启用确定性计算
     save_backup_ckpts: bool = False  # 是否保存备份检查点
 
@@ -74,7 +74,7 @@ class BRSConfig:
 class TrainConfig:
     seed: int  # 随机种子
     eval_env: EnvConfig  # 评估环境配置
-    algo: BRSConfig  # 算法配置
+    algo: ICPMMConfig  # 算法配置
     logger: LoggerConfig  # 日志记录器配置
 
     wandb_id: Optional[str] = None  # Weights & Biases ID
@@ -160,8 +160,8 @@ def recursive_h5py_to_numpy(h5py_obs, slice=None):
         return h5py_obs[slice]
     return h5py_obs[:] # 当 h5py_obs是一个 h5py Dataset 对象时，对其进行切片操作（如 [slice]或 [:]）会自动返回一个 NumPy 数组。这是 h5py 库的设计特性，不需要显式调用转换函数。
 
-# BRS数据集类（继承自可关闭数据集）
-class BRSDataset(ClosableDataset):
+# ICPMM数据集类（继承自可关闭数据集）
+class ICPMMDataset(ClosableDataset):
     def __init__(
         self,
         data_path,
@@ -204,8 +204,8 @@ class BRSDataset(ClosableDataset):
                 obs, act = f[k]["obs"], f[k]["actions"][:]
 
                 obs_agent = obs["agent"]
-                obs_extra = obs["extra"]
-                # obs_extra = obs["extra"]["tcp_pose_wrt_base"]
+                # obs_extra = obs["extra"]
+                obs_extra = obs["extra"]["tcp_pose_wrt_base"]
 
                 # 根据成功标志截断轨迹
                 if truncate_trajectories_at_success:
@@ -273,7 +273,6 @@ class BRSDataset(ClosableDataset):
 
                 # 存储轨迹数据
                 trajectories["actions"].append(act)
-                pixel_obs = {} # 取消图像数据存储 节省内存
                 trajectories["observations"].append(dict(state=state_obs, pointcloud=pointcloud_obs, **pixel_obs))
 
             # 关闭文件或保留打开
@@ -306,14 +305,10 @@ class BRSDataset(ClosableDataset):
             L = trajectories["observations"][traj_idx]["state"].shape[0] - 1
             total_transitions += L
 
-            # 计算填充
-            pad_before = obs_horizon - 1
-            pad_after = pred_horizon - obs_horizon
-            
-            # 生成所有切片
+            # 生成所有观测切片
             self.slices += [
-                (traj_idx, start, start + pred_horizon)
-                for start in range(-pad_before, L - pred_horizon + pad_after)
+                (traj_idx, start, start + obs_horizon)
+                for start in range(-obs_horizon + 1, L - obs_horizon)
             ]
 
         print(
@@ -329,43 +324,46 @@ class BRSDataset(ClosableDataset):
 
         obs_traj = self.trajectories["observations"][traj_idx]
         obs_seq = {}
-    
-        _act_seq = []
-        for i in range(self.obs_horizon):
-            index_start = start + i
-            index_end = index_start + self.pred_horizon
-            # 处理动作序列
-            act_seq = self.trajectories["actions"][traj_idx][max(0, index_start) : index_end]
-            # 在轨迹开始前填充
-            if index_start < 0:
-                act_seq = torch.cat([act_seq[0].repeat(-index_start, 1), act_seq], dim=0)
-            # 在轨迹结束后填充
-            if index_end > L:
-                gripper_action = act_seq[-1, -1]
-                pad_action = torch.cat((self.pad_action_arm, gripper_action[None]), dim=0)
-                act_seq = torch.cat([act_seq, pad_action.repeat(index_end - L, 1)], dim=0)
-            _act_seq.append(act_seq)
-        act_seq = torch.stack(_act_seq, dim=0)  # (obs_horizon, pred_horizon, act_dim)
-
+        
         # 处理观测序列
         for k, v in obs_traj.items():
-            obs_seq[k] = v[
-                max(0, start) : start + self.obs_horizon
-            ]
-            # 处理图像数据格式
-            if len(obs_seq[k].shape) == 4:
+            if k == "pointcloud":
+                obs_seq[k] = v[
+                    max(0, start) : end + 1
+                ]  # (L, N+1, 3) or (L, N+1, 6)
+            elif k == "state":
+                obs_seq[k] = v[
+                    max(0, start) : end
+                ] # (L, state_dim)
+            else:
+                obs_seq[k] = v[end-1].unsqueeze(0) # 只要最后一帧图像
+                assert len(obs_seq[k].shape) == 4
+                # 处理图像数据格式
                 obs_seq[k] = self.transforms(to_tensor(obs_seq[k]).permute(0, 3, 1, 2))  # FS, D, H, W 原图128x128
             # 在轨迹开始前填充
-            if start < 0:
+            if start < 0 and (k == "pointcloud" or k == "state"):
                 pad_obs_seq = torch.stack([obs_seq[k][0]] * abs(start), dim=0)
                 obs_seq[k] = torch.cat((pad_obs_seq, obs_seq[k]), dim=0)
 
+        # 处理动作序列
+        act_seq = self.trajectories["actions"][traj_idx][end - 1 : min(end + self.pred_horizon - 1, L)]
+        # 在轨迹结束后填充
+        if end + self.pred_horizon - 1 > L:
+            gripper_action = act_seq[-1, -1]
+            pad_action = torch.cat((self.pad_action_arm, gripper_action[None]), dim=0)
+            act_seq = torch.cat([act_seq, pad_action.repeat(end + self.pred_horizon - 1 - L, 1)], dim=0)
+            
         # 验证序列长度
         assert (
-            obs_seq["state"].shape[0] == self.obs_horizon
-            and act_seq.shape[1] == self.pred_horizon
-            and act_seq.shape[0] == self.obs_horizon
+            obs_seq["pointcloud"].shape[0] == self.obs_horizon + 1 and
+            obs_seq["state"].shape[0] == self.obs_horizon and
+            obs_seq["fetch_head_rgb"].shape[0] == 1 and
+            obs_seq["fetch_head_depth"].shape[0] == 1 and
+            obs_seq["fetch_hand_rgb"].shape[0] == 1 and
+            obs_seq["fetch_hand_depth"].shape[0] == 1 and
+            act_seq.shape[0] == self.pred_horizon
         )
+        
         return {
             "observations": obs_seq,
             "actions": act_seq,
@@ -461,7 +459,7 @@ def train(cfg: TrainConfig):
     # -------------------------------------------------------------------------------------------------
     # 数据加载器初始化
     # -------------------------------------------------------------------------------------------------
-    brs_dataset = BRSDataset(
+    icpmm_dataset = ICPMMDataset(
         cfg.algo.data_dir_fp,
         cfg.algo.obs_horizon,
         cfg.algo.pred_horizon,
@@ -472,7 +470,7 @@ def train(cfg: TrainConfig):
     )
 
     # 创建数据采样器
-    sampler = RandomSampler(brs_dataset, replacement=False)
+    sampler = RandomSampler(icpmm_dataset, replacement=False)
     batch_sampler = BatchSampler(
         sampler, batch_size=cfg.algo.batch_size, drop_last=True
     )
@@ -480,7 +478,7 @@ def train(cfg: TrainConfig):
     
     # 创建数据加载器
     train_dataloader = ClosableDataLoader(
-        brs_dataset,
+        icpmm_dataset,
         batch_sampler=batch_sampler,
         num_workers=cfg.algo.num_dataload_workers,
         worker_init_fn=lambda worker_id: worker_init_fn(worker_id, base_seed=cfg.seed),
@@ -556,8 +554,7 @@ def train(cfg: TrainConfig):
             k: v.cuda(non_blocking=True) for k, v in obs_batch_dict.items()
         }
         act_batch = data_batch["actions"].cuda(non_blocking=True)
-        # if iteration == 0:
-        #     save_pointcloud_to_pcd(obs_batch_dict['pointcloud'][0, -1].cpu().numpy(), 'brs_4096.pcd')
+       
         # 计算损失
         loss = agent.compute_loss(
             obs=obs_batch_dict,

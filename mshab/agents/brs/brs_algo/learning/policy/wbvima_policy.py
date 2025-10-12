@@ -123,8 +123,10 @@ class WBVIMAPolicy(BaseDiffusionPolicy):
         
         # 初始化全身UNet扩散头用于动作解码
         self.action_decoder = WholeBodyUNetDiffusionHead(
-            whole_body_decoding_order=["mobile_base", "torso", "head", "arms"],  # 全身解码顺序
-            action_dim_per_part={"mobile_base": 2, "torso": 1, "head": 2, "arms": 8},  # 各部件动作维度
+            # whole_body_decoding_order=["mobile_base", "torso", "head", "arms"],  # 全身解码顺序
+            # action_dim_per_part={"mobile_base": 2, "torso": 1, "head": 2, "arms": 8},  # 各部件动作维度
+            whole_body_decoding_order=["action"],  # 全身解码顺序
+            action_dim_per_part={"action": action_dim},  # 各部件动作维
             obs_dim=xf_n_embd,  # 观测维度
             action_horizon=action_prediction_horizon,  # 动作预测步长
             diffusion_step_embed_dim=diffusion_step_embed_dim,  # 扩散步骤嵌入维度
@@ -288,11 +290,14 @@ class WBVIMAPolicy(BaseDiffusionPolicy):
         # 计算扩散损失
         loss = self.action_decoder.compute_loss(
             obs=action_readout_tokens,  # 观测（动作读出令牌）
+            # gt_action={
+            #     "mobile_base": mobile_base_action,  # 移动底座真实动作
+            #     "torso": torso_action,  # 躯干真实动作
+            #     "head": head_action,  # 头部真实动作
+            #     "arms": arms_action,  # 手臂真实动作
+            # },
             gt_action={
-                "mobile_base": mobile_base_action,  # 移动底座真实动作
-                "torso": torso_action,  # 躯干真实动作
-                "head": head_action,  # 头部真实动作
-                "arms": arms_action,  # 手臂真实动作
+                "action": gt_action,  # 全部真实动作
             },
         )
         
@@ -335,10 +340,11 @@ class WBVIMAPolicy(BaseDiffusionPolicy):
         
         # 将预测结果分割到不同部件
         return {
-            "mobile_base": pred["mobile_base"],  # 移动底座预测
-            "torso": pred["torso"],  # 躯干预测
-            "head": pred["head"],  # 头部预测
-            "arms": pred["arms"]  # 臂预测
+            # "mobile_base": pred["mobile_base"],  # 移动底座预测
+            # "torso": pred["torso"],  # 躯干预测
+            # "head": pred["head"],  # 头部预测
+            # "arms": pred["arms"]  # 臂预测
+            "action": pred["action"]  # 全部预测
         }
 
     # 行动函数（无梯度计算）

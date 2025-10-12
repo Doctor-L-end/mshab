@@ -68,6 +68,9 @@ def _depth_to_pointcloud_torch_batched(depth_imgs, rgb_imgs, intrinsics, depth_t
 
 # ========================= 暂时用random，不用fps =========================
 def _random_sample_points_torch_batched(points, colors, mask, num_samples):
+    if num_samples <= 0:
+        return None, None
+    
     N, P, _ = points.shape
     device = points.device
     
@@ -144,7 +147,7 @@ class FetchPointcloudFromDepthObservationWrapper(gym.ObservationWrapper):
                         (transformed_hand_points[:, :, 0] >= -0.5) & \
                         (transformed_hand_points[:, :, 0] <= 0.5)
 
-        num_total, hand_ratio = 4096, 0.6
+        num_total, hand_ratio = 1024, 0.0
         num_hand, num_head = int(num_total * hand_ratio), num_total - int(num_total * hand_ratio)
 
         # 采样和合并点云
@@ -155,8 +158,15 @@ class FetchPointcloudFromDepthObservationWrapper(gym.ObservationWrapper):
             transformed_hand_points, hand_colors, final_hand_mask, num_hand
         )
         
-        final_points = torch.cat([sampled_head_points, sampled_hand_points], dim=1)
-        final_colors = torch.cat([sampled_head_colors, sampled_hand_colors], dim=1)
+        if sampled_head_points is None and sampled_hand_points is None:
+            raise ValueError("No points sampled!")
+        elif sampled_head_points is None:
+            return torch.cat([sampled_hand_points, sampled_hand_colors], dim=2)
+        elif sampled_hand_points is None:
+            return torch.cat([sampled_head_points, sampled_head_colors], dim=2)
+        else:
+            final_points = torch.cat([sampled_head_points, sampled_hand_points], dim=1)
+            final_colors = torch.cat([sampled_head_colors, sampled_hand_colors], dim=1)
         
         return torch.cat([final_points, final_colors], dim=2)
 

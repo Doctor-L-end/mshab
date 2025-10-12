@@ -1,0 +1,63 @@
+seed: 0
+
+eval_env:
+  make_env: True
+
+  env_id: "PickSubtaskTrain-v0"
+  num_envs: 63
+  max_episode_steps: 200
+ 
+  continuous_task: True
+
+  cat_state: True
+  cat_pixels: False
+  frame_stack: null
+  stack: 16
+
+  stationary_base: False
+  stationary_torso: False
+  stationary_head: True
+
+  task_plan_fp: ~/.maniskill/data/scene_datasets/replica_cad_dataset/rearrange/task_plans/tidy_house/pick/train/all.json
+  spawn_data_fp: "~/.maniskill/data/scene_datasets/replica_cad_dataset/rearrange/spawn_data/tidy_house/pick/train/spawn_data.pt"
+
+  record_video: False
+  info_on_video: True
+
+  extra_stat_keys: []
+
+  env_kwargs:
+    robot_force_mult: 0.001
+    robot_force_penalty_min: 0.2
+    target_randomization: False
+
+algo:
+  name: icpmm
+
+  lr: 1e-4
+  batch_size: 256
+
+  obs_horizon: 16      
+  pred_horizon: 8             
+
+  # Dataset
+  data_dir_fp: ~/.manisill/data/scene_datasets/replica_cad_dataset/rearrange-dataset/tidy_hosue/pick
+  trajs_per_obj: all
+  max_image_cache_size: 0
+  num_dataload_workers: 0
+
+  # Experiment
+  num_iterations: 100_000
+  log_freq: 1000
+  eval_freq: 2000
+  save_freq: 2000
+  torch_deterministic: True
+  save_backup_ckpts: False
+
+logger:
+  workspace: mshab_exps
+  exp_name: icpmm-pick
+  clear_out: True
+  
+  tensorboard: True
+  wandb: False
