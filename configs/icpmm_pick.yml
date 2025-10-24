@@ -12,7 +12,7 @@ eval_env:
   cat_state: True
   cat_pixels: False
   frame_stack: null
-  stack: 16
+  stack: 8
 
   stationary_base: False
   stationary_torso: False
@@ -35,7 +35,7 @@ algo:
   name: icpmm
 
   lr: 1e-4
-  batch_size: 256
+  batch_size: 64
 
   obs_horizon: 16      
   pred_horizon: 8             

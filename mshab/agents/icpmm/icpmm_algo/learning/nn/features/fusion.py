@@ -1,97 +1,59 @@
 import torch
 import torch.nn as nn
-import numpy as np
 from einops import rearrange
 
-import icpmm_algo.utils as U
-
-
-class ObsTokenizer(nn.Module):
-    def __init__(
-        self,
-        extractors: dict[str, nn.Module],
-        *,
-        use_modality_type_tokens: bool,
-        token_dim: int,
-        token_concat_order: list[str],
-        strict: bool = True,
-    ):
-        assert set(extractors.keys()) == set(token_concat_order)
+class CrossModalAttention(nn.Module):
+    def __init__(self, dim, num_head=8, is_causal=False):
         super().__init__()
-        self._extractors = nn.ModuleDict(extractors)
-        self.output_dim = token_dim
-        self._token_concat_order = token_concat_order
-        self._strict = strict
-        self._obs_groups = None
-        self._use_modality_type_tokens = use_modality_type_tokens
-        self._modality_type_tokens = None
-        if use_modality_type_tokens:
-            modality_type_tokens = {}
-            for k in extractors:
-                modality_type_tokens[k] = nn.Parameter(torch.zeros(token_dim))
-            self._modality_type_tokens = nn.ParameterDict(modality_type_tokens)
+        self.num_head = num_head
+        self.is_causal = is_causal
+        self.scale = (dim // num_head) ** -0.5
+        
+        self.to_q = nn.Linear(dim, dim)  
+        self.to_kv = nn.Linear(dim, dim * 2)
+        self.to_out = nn.Linear(dim, dim)
 
-    def forward(self, obs: dict[str, torch.Tensor]):
-        """
-        x: Dict of (B, T, ...)
-
-        Each encoder should encode corresponding obs field to (B, T, E), where E = token_dim
-
-        The final output interleaves encoded tokens along the time dimension
-        """
-        obs = self._group_obs(obs)
-        self._check_obs_key_match(obs)
-        x = {
-            k: v.forward(obs[k]) for k, v in self._extractors.items()
-        }  # dict of (B, T, E)
-        if self._use_modality_type_tokens:
-            for k in x:
-                x[k] = x[k] + self._modality_type_tokens[k]
-        x = rearrange(
-            [x[k] for k in self._token_concat_order],
-            "F B T E -> B (T F) E",
+    def forward(self, state, pointcloud):
+        # state: (B, N, D), pointcloud: (B, N, D)
+        q = self.to_q(state) # (B, N, D)
+        k, v = self.to_kv(pointcloud).chunk(2, dim=-1)  # 各(B, N, D)
+        
+        # 多头拆分
+        q = rearrange(q, 'b n (h d) -> b h n d', h=self.num_head)  # (B, H, N, D/H)
+        k = rearrange(k, 'b n (h d) -> b h n d', h=self.num_head)
+        v = rearrange(v, 'b n (h d) -> b h n d', h=self.num_head)
+        
+        # 注意力计算
+        attn = torch.matmul(q, k.transpose(-1, -2)) * self.scale  # (B, H, N, N)
+        # 添加因果掩码
+        if self.is_causal:
+            N = attn.shape[-1]
+            mask = torch.triu(torch.ones(N, N), diagonal=1).bool()
+            attn = attn.masked_fill(mask.to(attn.device), -torch.inf)
+        attn = attn.softmax(dim=-1)
+        out = torch.matmul(attn, v)  # (B, H, N, D/H)
+        
+        # 合并多头
+        out = rearrange(out, 'b h n d -> b n (h d)')
+        return self.to_out(out)  # (B, N, D)
+    
+# 分层交叉注意力
+class EnhancedFusion(nn.Module):
+    def __init__(self, dim, num_head=8, is_causal=False):
+        super().__init__()
+        self.cross_attn1 = CrossModalAttention(dim, num_head=num_head, is_causal=is_causal)  # 状态→点云
+        self.cross_attn2 = CrossModalAttention(dim, num_head=num_head, is_causal=is_causal)  # 点云→状态
+        self.mlp = nn.Sequential(
+            nn.Linear(2*dim, dim),
+            nn.GELU(),
+            nn.Linear(dim, dim)
         )
-        self._check_output_shape(obs, x)
-        return x
-
-    def _group_obs(self, obs):
-        obs_keys = obs.keys()
-        if self._obs_groups is None:
-            # group by /
-            obs_groups = {k.split("/")[0] for k in obs_keys}
-            self._obs_groups = sorted(list(obs_groups))
-        obs_rtn = {}
-        for g in self._obs_groups:
-            is_subgroup = any(k.startswith(f"{g}/") for k in obs_keys)
-            if is_subgroup:
-                obs_rtn[g] = {
-                    k.split("/", 1)[1]: v
-                    for k, v in obs.items()
-                    if k.startswith(f"{g}/")
-                }
-            else:
-                obs_rtn[g] = obs[g]
-        return obs_rtn
-
-    @U.call_once
-    def _check_obs_key_match(self, obs: dict):
-        if self._strict:
-            assert set(self._extractors.keys()) == set(obs.keys())
-        elif set(self._extractors.keys()) != set(obs.keys()):
-            print(
-                U.color_text(
-                    f"[warning] obs key mismatch: {set(self._extractors.keys())} != {set(obs.keys())}",
-                    "yellow",
-                )
-            )
-
-    @U.call_once
-    def _check_output_shape(self, obs, output):
-        T = U.get_batch_size(U.any_slice(obs, np.s_[0]), strict=True)
-        U.check_shape(
-            output, (None, T * len(self._token_concat_order), self.output_dim)
-        )
-
-    @property
-    def num_tokens_per_step(self):
-        return len(self._token_concat_order)
+    
+    def forward(self, state, pointcloud):
+        # 双向交叉注意力
+        fused_state = self.cross_attn1(state, pointcloud)  # 用状态查询点云
+        fused_pc = self.cross_attn2(pointcloud, state)    # 用点云查询状态
+        
+        # 合并双向结果
+        out = torch.cat([fused_state, fused_pc], dim=-1)
+        return self.mlp(out)  # (B,N,D)

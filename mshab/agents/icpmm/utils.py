@@ -203,7 +203,7 @@ def _get_merged_pc_vectorized(sensor_data, sensor_params, num_envs):
                     (transformed_hand_points[:, :, 2] < 1.7) & \
                     (transformed_hand_points[:, :, 0] >= -0.5) & \
                     (transformed_hand_points[:, :, 0] <= 0.5)
-    num_total, hand_ratio = 1024, 0.0
+    num_total, hand_ratio = 2048, 0.5
     num_hand, num_head = int(num_total * hand_ratio), num_total - int(num_total * hand_ratio)
     # 采样和合并点云
     sampled_head_points, sampled_head_colors = _random_sample_points_torch_batched(
@@ -220,6 +220,7 @@ def _get_merged_pc_vectorized(sensor_data, sensor_params, num_envs):
         return torch.cat([sampled_head_points, sampled_head_colors], dim=2)
     else:
         final_points = torch.cat([sampled_head_points, sampled_hand_points], dim=1)
-        final_colors = torch.cat([sampled_head_colors, sampled_hand_colors], dim=1)
+        # final_colors = torch.cat([sampled_head_colors, sampled_hand_colors], dim=1)
     
-    return torch.cat([final_points, final_colors], dim=2)
+    return final_points
+    # return torch.cat([final_points, final_colors], dim=2)

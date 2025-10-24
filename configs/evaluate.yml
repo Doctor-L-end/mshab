@@ -4,7 +4,7 @@ save_trajectory: False
 
 eval_env:
   make_env: True
-
+  
   env_id: "SequentialTask-v0"
   num_envs: 252
   max_episode_steps: 200

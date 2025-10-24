@@ -3,19 +3,20 @@
 #############################################
 # Changed
 ########################################
+export CUDA_VISIBLE_DEVICES=5
 
 SEED=0
 
 TASK=set_table
-SUBTASK=pick
+SUBTASK=close
 SPLIT=train
-OBJ=013_apple
+OBJ=kitchen_counter
 
 record_video=True
 info_on_video=True
 save_trajectory=False
-max_trajectories=1000
-policy_type=act
+max_trajectories=100
+policy_type=act_multi_head
 
 continuous_task=True
 
@@ -35,6 +36,7 @@ fi
 
 
 WANDB=True
+export WANDB_API_KEY="6fef053c5da3e0cd487fe9096cc2e2fe2e400495"
 TENSORBOARD=True
 
 #############################################
@@ -124,7 +126,19 @@ if [[ $policy_type == "bc" ]]; then
 elif [[ $policy_type == "dp" ]]; then
         FRAME_STACK=null
         STACK=2
+elif [[ $policy_type == "brs" ]]; then
+        FRAME_STACK=null
+        STACK=2
+elif [[ $policy_type == "brs_one_decoder" ]]; then
+        FRAME_STACK=null
+        STACK=2
+elif [[ $policy_type == "brs_without_extra" ]]; then
+        FRAME_STACK=null
+        STACK=2
 elif [[ $policy_type == "act" ]]; then
+        FRAME_STACK=null
+        STACK=1
+elif [[ $policy_type == "act_multi_head" ]]; then
         FRAME_STACK=null
         STACK=1
 else
@@ -134,6 +148,8 @@ fi
 
 #############################################
 NUM_ENVS=1 #看着清晰
+OBS_MODE="rgbd"
+get_pointcloud_from_depth="True"
 SAPIEN_NO_DISPLAY=1 python -m mshab.evaluate configs/evaluate.yml \
         seed=$SEED \
         task=$TASK \
@@ -144,6 +160,9 @@ SAPIEN_NO_DISPLAY=1 python -m mshab.evaluate configs/evaluate.yml \
         eval_env.task_plan_fp="$MS_ASSET_DIR/data/scene_datasets/replica_cad_dataset/rearrange/task_plans/$TASK/$SUBTASK/$SPLIT/$OBJ.json" \
         \
         eval_env.make_env="True" \
+        \
+        eval_env.obs_mode=$OBS_MODE \
+        eval_env.get_pointcloud_from_depth=$get_pointcloud_from_depth \
         \
         eval_env.num_envs=$NUM_ENVS \
         eval_env.frame_stack=$FRAME_STACK \

@@ -31,24 +31,24 @@ class Agent(nn.Module):
             pointnet_n_color=3,
             pointnet_hidden_depth=2,
             pointnet_hidden_dim=256,
-            # action_keys=[
-            #     "mobile_base",
-            #     "torso",
-            #     "head",
-            #     "arm",
-            # ],
             action_keys=[
-                "action",
+                "mobile_base",
+                "torso",
+                "head",
+                "arm",
             ],
-            # action_key_dims={
-            #     "mobile_base": 2,
-            #     "torso": 1,
-            #     "head": 2,  
-            #     "arm": 8,
-            # },
+            # action_keys=[
+            #     "action",
+            # ],
             action_key_dims={
-                "action": self.act_dim,
+                "mobile_base": 2,
+                "torso": 1,
+                "head": 2,  
+                "arm": 8,
             },
+            # action_key_dims={
+            #     "action": self.act_dim,
+            # },
             num_latest_obs=args.obs_horizon,
             use_modality_type_tokens=False,
             xf_n_embd=256,
@@ -86,6 +86,6 @@ class Agent(nn.Module):
     def get_action(self, obs):
         obs['pointcloud'] = normalize_point_cloud(obs['pointcloud'])
         raw_action = self.policy.act(obs)
-        # action = torch.cat([raw_action["arms"], raw_action["head"], raw_action["torso"], raw_action["mobile_base"]], dim=-1)
-        action = raw_action["action"]
+        action = torch.cat([raw_action["arms"], raw_action["head"], raw_action["torso"], raw_action["mobile_base"]], dim=-1)
+        # action = raw_action["action"]
         return action

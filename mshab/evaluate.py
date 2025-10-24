@@ -28,6 +28,7 @@ from mani_skill.utils import common  # 通用工具函数
 from mshab.agents.bc import Agent as BCAgent  # BC算法代理
 from mshab.agents.act import Agent as ACTAgent  # ACT算法代理
 from mshab.agents.dp import Agent as DPAgent  # 扩散策略代理
+from mshab.agents.brs import Agent as BRSAgent # BRS算法代理
 from mshab.agents.ppo import Agent as PPOAgent  # PPO算法代理
 from mshab.agents.sac import Agent as SACAgent  # SAC算法代理
 from mshab.envs.make import EnvConfig, make_env  # 环境创建配置和函数
@@ -163,6 +164,154 @@ POLICY_TYPE_TASK_SUBTASK_TO_TARG_IDS = dict(
             # navigate=["all"],  # 摆桌子任务中导航子任务的目标对象
             # open=["fridge", "kitchen_counter"],  # 摆桌子任务中打开子任务的目标对象
             # close=["fridge", "kitchen_counter"],  # 摆桌子任务中关闭子任务的目标对象
+        ),
+    ),
+
+    # ACT算法配置
+    act_multi_head=dict(
+        tidy_house=dict(
+            pick=[
+                "002_master_chef_can", "003_cracker_box", "004_sugar_box", 
+                "005_tomato_soup_can", "007_tuna_fish_can", "008_pudding_box", 
+                "009_gelatin_box", "010_potted_meat_can", "024_bowl", "all"
+            ],  # 整理房间任务中拾取子任务的目标对象列表
+            place=[
+                "002_master_chef_can", "003_cracker_box", "004_sugar_box", 
+                "005_tomato_soup_can", "007_tuna_fish_can", "008_pudding_box", 
+                "009_gelatin_box", "010_potted_meat_can", "024_bowl", "all"
+            ],  # 整理房间任务中放置子任务的目标对象列表
+            navigate=["all"],  # 整理房间任务中导航子任务的目标对象
+        ),
+        prepare_groceries=dict(
+            pick=[
+                "002_master_chef_can", "003_cracker_box", "004_sugar_box", 
+                "005_tomato_soup_can", "007_tuna_fish_can", "008_pudding_box", 
+                "009_gelatin_box", "010_potted_meat_can", "024_bowl", "all"
+            ],  # 准备食材任务中拾取子任务的目标对象列表
+            place=[
+                "002_master_chef_can", "003_cracker_box", "004_sugar_box", 
+                "005_tomato_soup_can", "007_tuna_fish_can", "008_pudding_box", 
+                "009_gelatin_box", "010_potted_meat_can", "024_bowl", "all"
+            ],  # 准备食材任务中放置子任务的目标对象列表
+            navigate=["all"],  # 准备食材任务中导航子任务的目标对象
+        ),
+        set_table=dict(
+            # pick=["024_bowl"],  #, "024_bowl", "all"],  # 摆桌子任务中拾取子任务的目标对象列表
+            # place=["024_bowl"],  # 摆桌子任务中放置子任务的目标对象列表
+            # navigate=["all"],  # 摆桌子任务中导航子任务的目标对象
+            # open=["fridge", "kitchen_counter"],  # 摆桌子任务中打开子任务的目标对象
+            close=["kitchen_counter"],  # 摆桌子任务中关闭子任务的目标对象
+        ),
+    ),
+
+    # BRS算法配置
+    brs=dict(
+        tidy_house=dict(
+            pick=[
+                "002_master_chef_can", "003_cracker_box", "004_sugar_box", 
+                "005_tomato_soup_can", "007_tuna_fish_can", "008_pudding_box", 
+                "009_gelatin_box", "010_potted_meat_can", "024_bowl", "all"
+            ],  # 整理房间任务中拾取子任务的目标对象列表
+            place=[
+                "002_master_chef_can", "003_cracker_box", "004_sugar_box", 
+                "005_tomato_soup_can", "007_tuna_fish_can", "008_pudding_box", 
+                "009_gelatin_box", "010_potted_meat_can", "024_bowl", "all"
+            ],  # 整理房间任务中放置子任务的目标对象列表
+            navigate=["all"],  # 整理房间任务中导航子任务的目标对象
+        ),
+        prepare_groceries=dict(
+            pick=[
+                "002_master_chef_can", "003_cracker_box", "004_sugar_box", 
+                "005_tomato_soup_can", "007_tuna_fish_can", "008_pudding_box", 
+                "009_gelatin_box", "010_potted_meat_can", "024_bowl", "all"
+            ],  # 准备食材任务中拾取子任务的目标对象列表
+            place=[
+                "002_master_chef_can", "003_cracker_box", "004_sugar_box", 
+                "005_tomato_soup_can", "007_tuna_fish_can", "008_pudding_box", 
+                "009_gelatin_box", "010_potted_meat_can", "024_bowl", "all"
+            ],  # 准备食材任务中放置子任务的目标对象列表
+            navigate=["all"],  # 准备食材任务中导航子任务的目标对象
+        ),
+        set_table=dict(
+            # pick=["013_apple"],  #, "024_bowl", "all"],  # 摆桌子任务中拾取子任务的目标对象列表
+            place=["013_apple"],  # 摆桌子任务中放置子任务的目标对象列表
+            # navigate=["all"],  # 摆桌子任务中导航子任务的目标对象
+            # open=["fridge", "kitchen_counter"],  # 摆桌子任务中打开子任务的目标对象
+            # close=["kitchen_counter"],  # 摆桌子任务中关闭子任务的目标对象
+        ),
+    ),
+
+    # BRS算法配置
+    brs_without_extra=dict(
+        tidy_house=dict(
+            pick=[
+                "002_master_chef_can", "003_cracker_box", "004_sugar_box", 
+                "005_tomato_soup_can", "007_tuna_fish_can", "008_pudding_box", 
+                "009_gelatin_box", "010_potted_meat_can", "024_bowl", "all"
+            ],  # 整理房间任务中拾取子任务的目标对象列表
+            place=[
+                "002_master_chef_can", "003_cracker_box", "004_sugar_box", 
+                "005_tomato_soup_can", "007_tuna_fish_can", "008_pudding_box", 
+                "009_gelatin_box", "010_potted_meat_can", "024_bowl", "all"
+            ],  # 整理房间任务中放置子任务的目标对象列表
+            navigate=["all"],  # 整理房间任务中导航子任务的目标对象
+        ),
+        prepare_groceries=dict(
+            pick=[
+                "002_master_chef_can", "003_cracker_box", "004_sugar_box", 
+                "005_tomato_soup_can", "007_tuna_fish_can", "008_pudding_box", 
+                "009_gelatin_box", "010_potted_meat_can", "024_bowl", "all"
+            ],  # 准备食材任务中拾取子任务的目标对象列表
+            place=[
+                "002_master_chef_can", "003_cracker_box", "004_sugar_box", 
+                "005_tomato_soup_can", "007_tuna_fish_can", "008_pudding_box", 
+                "009_gelatin_box", "010_potted_meat_can", "024_bowl", "all"
+            ],  # 准备食材任务中放置子任务的目标对象列表
+            navigate=["all"],  # 准备食材任务中导航子任务的目标对象
+        ),
+        set_table=dict(
+            # pick=["013_apple"],  #, "024_bowl", "all"],  # 摆桌子任务中拾取子任务的目标对象列表
+            place=["013_apple"],  # 摆桌子任务中放置子任务的目标对象列表
+            # navigate=["all"],  # 摆桌子任务中导航子任务的目标对象
+            # open=["fridge", "kitchen_counter"],  # 摆桌子任务中打开子任务的目标对象
+            # close=["kitchen_counter"],  # 摆桌子任务中关闭子任务的目标对象
+        ),
+    ),
+
+    # BRS算法配置
+    brs_one_decoder=dict(
+        tidy_house=dict(
+            pick=[
+                "002_master_chef_can", "003_cracker_box", "004_sugar_box", 
+                "005_tomato_soup_can", "007_tuna_fish_can", "008_pudding_box", 
+                "009_gelatin_box", "010_potted_meat_can", "024_bowl", "all"
+            ],  # 整理房间任务中拾取子任务的目标对象列表
+            place=[
+                "002_master_chef_can", "003_cracker_box", "004_sugar_box", 
+                "005_tomato_soup_can", "007_tuna_fish_can", "008_pudding_box", 
+                "009_gelatin_box", "010_potted_meat_can", "024_bowl", "all"
+            ],  # 整理房间任务中放置子任务的目标对象列表
+            navigate=["all"],  # 整理房间任务中导航子任务的目标对象
+        ),
+        prepare_groceries=dict(
+            pick=[
+                "002_master_chef_can", "003_cracker_box", "004_sugar_box", 
+                "005_tomato_soup_can", "007_tuna_fish_can", "008_pudding_box", 
+                "009_gelatin_box", "010_potted_meat_can", "024_bowl", "all"
+            ],  # 准备食材任务中拾取子任务的目标对象列表
+            place=[
+                "002_master_chef_can", "003_cracker_box", "004_sugar_box", 
+                "005_tomato_soup_can", "007_tuna_fish_can", "008_pudding_box", 
+                "009_gelatin_box", "010_potted_meat_can", "024_bowl", "all"
+            ],  # 准备食材任务中放置子任务的目标对象列表
+            navigate=["all"],  # 准备食材任务中导航子任务的目标对象
+        ),
+        set_table=dict(
+            #pick=["013_apple"],  #, "024_bowl", "all"],  # 摆桌子任务中拾取子任务的目标对象列表
+            place=["013_apple"],  # 摆桌子任务中放置子任务的目标对象列表
+            # navigate=["all"],  # 摆桌子任务中导航子任务的目标对象
+            # open=["fridge", "kitchen_counter"],  # 摆桌子任务中打开子任务的目标对象
+            #close=["kitchen_counter"],  # 摆桌子任务中关闭子任务的目标对象
         ),
     ),
 )
@@ -321,6 +470,8 @@ def eval(cfg: EvalConfig):
     # ----------------------------
     # 扩散策略动作历史缓存
     dp_action_history = deque([])
+    # BRS算法动作历史缓存
+    brs_action_history = deque([])
     # ACT算法
     ts = 0  # 时间步计数器
     actions_to_take = None  # 待执行动作序列
@@ -474,15 +625,46 @@ def eval(cfg: EvalConfig):
                     # 获取动作序列并转置维度
                     actions = policy.get_action(obs)
                     # 将动作序列添加到历史队列
-                    dp_action_history.extend(actions.transpose(0, 1))
+                    dp_action_history.extend(actions.transpose(0, 1)) # ?
                 # 返回队列中的第一个动作
                 return dp_action_history.popleft()
             
             # 使用专用动作函数
             policy_act_fn = get_dp_act
 
+        elif algo_cfg.name == "brs" or algo_cfg.name == "brs_one_decoder" or algo_cfg.name == "brs_without_extra":
+            # 验证环境配置
+            assert cfg.eval_env.continuous_task
+            assert cfg.eval_env.stack is not None and cfg.eval_env.frame_stack is None
+            
+            # 创建扩散策略代理
+            policy = BRSAgent(eval_envs, algo_cfg)
+            # 设置为评估模式
+            policy.eval()
+            # 加载模型权重
+            policy.load_state_dict(
+                torch.load(algo_ckpt_path, map_location=device)["agent"]
+            )
+            # 将策略移至指定设备
+            policy.to(device)
+
+            # BRS算法动作函数
+            def get_brs_act(obs):
+                """管理动作历史并返回下一个动作"""
+                # 如果动作历史为空，生成新动作序列
+                if len(brs_action_history) == 0:
+                    # 获取动作序列并转置维度
+                    actions = policy.get_action(obs)
+                    # 将动作序列添加到历史队列
+                    brs_action_history.extend(actions.transpose(0, 1))
+                # 返回队列中的第一个动作
+                return brs_action_history.popleft()
+            
+            # 使用专用动作函数
+            policy_act_fn = get_brs_act
+
         # ACT算法    
-        elif algo_cfg.name == "act":
+        elif algo_cfg.name == "act" or algo_cfg.name == "act_multi_head":
             policy = ACTAgent(eval_envs, algo_cfg)
             # 设置为评估模式
             policy.eval()
@@ -557,10 +739,11 @@ def eval(cfg: EvalConfig):
         return policy_act_fn
 
     # 策略存储路径
-    mshab_ckpt_dir = ASSET_DIR / "mshab_checkpoints"
-    # 如果默认路径不存在，使用备用路径
-    if not mshab_ckpt_dir.exists():
-        mshab_ckpt_dir = Path("mshab_checkpoints")
+    # mshab_ckpt_dir = ASSET_DIR / "mshab_checkpoints"
+    # # 如果默认路径不存在，使用备用路径
+    # if not mshab_ckpt_dir.exists():
+    #     mshab_ckpt_dir = Path("mshab_checkpoints")
+    mshab_ckpt_dir = Path("/raid/ljh/mshab/mshab_checkpoints")
 
     # 加载所有策略
     policies = dict()
@@ -710,7 +893,7 @@ def eval(cfg: EvalConfig):
                         # 切片观测
                         sliced_obs = recursive_slice(obs, subtask_env_idx)
                         # 获取动作 # 当更换小任务时，这里需要额外修改
-                        action[subtask_env_idx] = policies[subtask_name]["013_apple"](
+                        action[subtask_env_idx] = policies[subtask_name]["024_bowl"](
                             sliced_obs
                         )
 
@@ -830,7 +1013,10 @@ def eval(cfg: EvalConfig):
         if cfg.policy_key == "dp":
             if torch.any(term | trunc):
                 dp_action_history.clear()
-        if cfg.policy_key == "act":
+        if cfg.policy_key == "brs" or cfg.policy_key == "brs_one_decoder" or cfg.policy_key == "brs_without_extra":
+            if torch.any(term | trunc):
+                brs_action_history.clear()
+        if cfg.policy_key == "act" or cfg.policy_key == "act_multi_head":
             act_init()
         # 增加步数
         step_num += 1

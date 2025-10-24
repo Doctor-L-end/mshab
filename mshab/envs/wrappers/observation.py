@@ -147,7 +147,7 @@ class FetchPointcloudFromDepthObservationWrapper(gym.ObservationWrapper):
                         (transformed_hand_points[:, :, 0] >= -0.5) & \
                         (transformed_hand_points[:, :, 0] <= 0.5)
 
-        num_total, hand_ratio = 1024, 0.0
+        num_total, hand_ratio = 2048, 0.5
         num_hand, num_head = int(num_total * hand_ratio), num_total - int(num_total * hand_ratio)
 
         # 采样和合并点云
@@ -166,16 +166,19 @@ class FetchPointcloudFromDepthObservationWrapper(gym.ObservationWrapper):
             return torch.cat([sampled_head_points, sampled_head_colors], dim=2)
         else:
             final_points = torch.cat([sampled_head_points, sampled_hand_points], dim=1)
-            final_colors = torch.cat([sampled_head_colors, sampled_hand_colors], dim=1)
+            # final_colors = torch.cat([sampled_head_colors, sampled_hand_colors], dim=1)
         
-        return torch.cat([final_points, final_colors], dim=2)
+        return final_points
+        # return torch.cat([final_points, final_colors], dim=2)
 
     def observation(self, observation):
         # print(observation.keys()) # dict_keys(['agent', 'extra', 'sensor_data', 'sensor_param'])
 
         agent_obs = observation["agent"]
-        # extra_obs = observation["extra"]
-        extra_obs = observation["extra"]["tcp_pose_wrt_base"]
+        extra_obs = observation["extra"]
+        # extra_obs = observation["extra"]["tcp_pose_wrt_base"]
+        extra_obs.pop("obj_pose_wrt_base")
+        extra_obs.pop("is_grasped")
 
         # print(agent_obs.keys()) # dict_keys(['qpos', 'qvel'])
         # print(extra_obs.keys()) # dict_keys(['tcp_pose_wrt_base', 'obj_pose_wrt_base', 'goal_pos_wrt_base', 'is_grasped'])
@@ -263,8 +266,10 @@ class FetchRGBDObservationWrapper(gym.ObservationWrapper):
         # print(observation.keys()) # dict_keys(['agent', 'extra', 'sensor_data', 'sensor_param'])
 
         agent_obs = observation["agent"]
-        # extra_obs = observation["extra"]
-        extra_obs = observation["extra"]["tcp_pose_wrt_base"]
+        extra_obs = observation["extra"]
+        # extra_obs = observation["extra"]["tcp_pose_wrt_base"]
+        extra_obs.pop("obj_pose_wrt_base")
+        extra_obs.pop("is_grasped")
 
         fetch_head_depth = self.transforms(observation["sensor_data"]["fetch_head"]["depth"].permute(
             0, 3, 1, 2

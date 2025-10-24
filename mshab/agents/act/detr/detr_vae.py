@@ -8,6 +8,7 @@ from torch.autograd import Variable  # 用于自动微分
 from mshab.agents.act.detr.transformer import build_transformer, TransformerEncoder, TransformerEncoderLayer  # 导入Transformer相关组件
 
 import numpy as np
+import copy
 
 import IPython  # 用于交互式开发
 e = IPython.embed  # 简写嵌入函数
@@ -43,18 +44,26 @@ def get_sinusoid_encoding_table(n_position, d_hid):
 # DETRVAE模型类（基于DETR的变分自编码器）
 class DETRVAE(nn.Module):
     """ 这是执行目标检测的DETR模块 """
-    def __init__(self, backbones, transformer, encoder, state_dim, action_dim, num_queries):
+    def __init__(self, backbones, transformer, encoder, state_dim, action_dim, num_queries, action_dims=None):
         super().__init__()
         # 初始化查询数量（目标检测中的对象查询）
         self.num_queries = num_queries
         # Transformer解码器
         self.transformer = transformer
+        # self.transformer_mobile_base = copy.deepcopy(transformer)
+        # self.transformer_torso = copy.deepcopy(transformer)
+        # self.transformer_head = copy.deepcopy(transformer)
+        # self.transformer_arm = copy.deepcopy(transformer)
         # Transformer编码器（用于CVAE）
         self.encoder = encoder
         # 获取Transformer的隐藏维度
         hidden_dim = transformer.d_model
         # 动作预测头：将隐藏状态映射到动作空间
         self.action_head = nn.Linear(hidden_dim, action_dim)
+        # self.mobile_base_action_head = nn.Linear(hidden_dim, action_dims["mobile_base"])
+        # self.torso_action_head = nn.Linear(hidden_dim, action_dims["torso"])
+        # self.head_action_head = nn.Linear(hidden_dim, action_dims["head"])
+        # self.arm_action_head = nn.Linear(hidden_dim, action_dims["arm"])
         # 可学习的查询嵌入（用于Transformer解码器）
         self.query_embed = nn.Embedding(num_queries, hidden_dim)
         
@@ -162,6 +171,23 @@ class DETRVAE(nn.Module):
                 src, None, self.query_embed.weight, pos, 
                 latent_input, proprio_input, self.additional_pos_embed.weight
             )[0]  # 取输出序列
+
+            # hs_mobile_base = self.transformer_mobile_base(
+            #     src, None, self.query_embed.weight, pos, 
+            #     latent_input, proprio_input, self.additional_pos_embed.weight
+            # )[0]  # 取输出序列
+            # hs_torso = self.transformer_torso(
+            #     src, None, self.query_embed.weight, pos, 
+            #     latent_input, proprio_input, self.additional_pos_embed.weight
+            # )[0]  # 取输出序列
+            # hs_head = self.transformer_head(
+            #     src, None, self.query_embed.weight, pos, 
+            #     latent_input, proprio_input, self.additional_pos_embed.weight
+            # )[0]  # 取输出序列
+            # hs_arm = self.transformer_arm(
+            #     src, None, self.query_embed.weight, pos, 
+            #     latent_input, proprio_input, self.additional_pos_embed.weight
+            # )[0]  # 取输出序列
         else:
             # 无视觉模式：仅处理状态
             state = self.input_proj_robot_state(state)
@@ -170,8 +196,34 @@ class DETRVAE(nn.Module):
                 latent_input, state, self.additional_pos_embed.weight
             )[0] # 0是最后一层
 
+            # hs_mobile_base = self.transformer_mobile_base(
+            #     None, None, self.query_embed.weight, None, 
+            #     latent_input, state, self.additional_pos_embed.weight
+            # )[0] # 0是最后一层
+            # hs_torso = self.transformer_torso(
+            #     None, None, self.query_embed.weight, None, 
+            #     latent_input, state, self.additional_pos_embed.weight
+            # )[0] # 0是最后一层
+            # hs_head = self.transformer_head(
+            #     None, None, self.query_embed.weight, None, 
+            #     latent_input, state, self.additional_pos_embed.weight
+            # )[0] # 0是最后一层
+            # hs_arm = self.transformer_arm(
+            #     None, None, self.query_embed.weight, None, 
+            #     latent_input, state, self.additional_pos_embed.weight
+            # )[0] # 0是最后一层
+
         # 通过动作头预测动作
         a_hat = self.action_head(hs)
+        # a_hat_mobile_base = self.mobile_base_action_head(hs_mobile_base)
+        # a_hat_torso = self.torso_action_head(hs_torso)
+        # a_hat_head = self.head_action_head(hs_head)
+        # a_hat_arm = self.arm_action_head(hs_arm)
+        # a_hat = {}
+        # a_hat["mobile_base"] = a_hat_mobile_base
+        # a_hat["torso"] = a_hat_torso
+        # a_hat["head"] = a_hat_head
+        # a_hat["arm"] = a_hat_arm
         # 返回预测动作和潜在分布参数
         return a_hat, [mu, logvar]
 

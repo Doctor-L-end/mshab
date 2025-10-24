@@ -109,12 +109,12 @@ NUM_ENVS = 189
 SEED = 2024
 MAX_TRAJECTORIES = 1000
 
-DEMO_FILTER = "any"  # "any" | "success" | "min_success_subtasks"
+DEMO_FILTER = "success"  # "any" | "success" | "min_success_subtasks"
 MIN_SUCCESS_SUBTASKS = None  # int if DEMO_FILTER == "min_success_subtasks"
 
 SAVE_TRAJECTORIES = True
-RECORD_VIDEO = False
-DEBUG_VIDEO_GEN = False
+RECORD_VIDEO = True
+DEBUG_VIDEO_GEN = True
 
 POLICY_TYPE = "rl_per_obj"
 POLICY_KEY = "rl"

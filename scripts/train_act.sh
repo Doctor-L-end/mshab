@@ -1,28 +1,31 @@
 #!/usr/bin/bash
+export CUDA_VISIBLE_DEVICES=5
 
 SEED=0
 
 TRAJS_PER_OBJ=1000
 MAX_IMAGE_CACHE_SIZE=all
 num_dataload_workers=8
-num_iterations=1_000_000
+num_iterations=100_000
 
 TASK=set_table
-SUBTASK=place
+SUBTASK=close
 SPLIT=train
-OBJ=013_apple
+OBJ=kitchen_counter
 
 # shellcheck disable=SC2001
 ENV_ID="$(echo $SUBTASK | sed 's/\b\(.\)/\u\1/g')SubtaskTrain-v0"
 WORKSPACE="mshab_exps"
 GROUP=$TASK-rcad-act-$SUBTASK
-EXP_NAME="$ENV_ID/$GROUP/act-$SUBTASK-$OBJ-local-trajs_per_obj=$TRAJS_PER_OBJ"
+# EXP_NAME="$ENV_ID/$GROUP/act-$SUBTASK-$OBJ-local-multi-head-trajs_per_obj=$TRAJS_PER_OBJ"
+EXP_NAME="$ENV_ID/$GROUP/act-$SUBTASK-$OBJ-local-without_extra-trajs_per_obj=$TRAJS_PER_OBJ"
 # shellcheck disable=SC2001
 PROJECT_NAME="MS-HAB-RCAD-act"
 
 OBS_MODE="rgbd" # env supports rgbd, pointcloud, segmentation, etc per ManiSkill; we use depth for provided baselines
 
 WANDB=True
+export WANDB_API_KEY="6fef053c5da3e0cd487fe9096cc2e2fe2e400495"
 TENSORBOARD=True
 if [[ -z "${MS_ASSET_DIR}" ]]; then
     MS_ASSET_DIR="$HOME/.maniskill"

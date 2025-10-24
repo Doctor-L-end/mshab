@@ -246,6 +246,8 @@ class BCDataset(ClosableDataset):
         observation = ep_data["obs"]
         agent_obs = self.transform_idx(observation["agent"], step_num)
         extra_obs = self.transform_idx(observation["extra"], step_num)
+        extra_obs.pop("obj_pose_wrt_base")
+        extra_obs.pop("is_grasped")
         
         # print(observation["sensor_data"]["fetch_head"]["depth"].shape) # (201, 128, 128, 1)  201代表时间步
         # 处理深度图像数据

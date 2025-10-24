@@ -213,12 +213,12 @@ def save_pointcloud_to_pcd(point_cloud, filename):
 
 def normalize_point_cloud(point_cloud):
     """
-    对形状为(B, T, N, 6)的点云进行归一化
-    前三个坐标归一化到[-1, 1]，后三个颜色值归一化到[0, 1]
+    对形状为(B, T, N, 6)或(B, T, N, 3)的点云进行归一化
+    前三个坐标归一化到[-1, 1]，如果有颜色信息则后三个颜色值归一化到[0, 1]
     支持PyTorch Tensor和NumPy数组输入，输出类型与输入一致
     
     参数:
-        point_cloud: 形状为(B, T, N, 6)的张量或数组
+        point_cloud: 形状为(B, T, N, 6)或(B, T, N, 3)的张量或数组
         
     返回:
         归一化后的点云，形状与输入相同，类型与输入一致
@@ -239,11 +239,11 @@ def normalize_point_cloud(point_cloud):
         point_cloud_np = point_cloud
     
     # 获取形状信息
-    B, T, N, _ = point_cloud_np.shape
+    B, T, N, D = point_cloud_np.shape
     
-    # 分离坐标和颜色
+    # 分离坐标和颜色（如果有）
     coords = point_cloud_np[..., :3]  # 前三个坐标为空间坐标
-    colors = point_cloud_np[..., 3:]  # 后三个坐标为颜色信息
+    has_color = (D == 6)
     
     # 1. 坐标归一化到[-1, 1]
     # 重塑以便计算每个样本的最小最大值
@@ -259,22 +259,29 @@ def normalize_point_cloud(point_cloud):
     coords_normalized = 2 * ((coords - min_coords.reshape(B, 1, 1, 3)) / 
                             range_coords.reshape(B, 1, 1, 3)) - 1
     
-    # 2. 颜色归一化到[0, 1]
-    # 检查颜色是否已经在[0, 1]范围内
-    reshaped_colors = colors.reshape(B, T * N, 3)
-    min_colors = np.min(reshaped_colors, axis=1)
-    max_colors = np.max(reshaped_colors, axis=1)
-    
-    # 如果颜色值不在[0, 1]范围内，则进行归一化
-    if np.any(min_colors < 0) or np.any(max_colors > 1):
-        # 假设颜色值在[0, 255]范围内，需要归一化到[0, 1]
-        colors_normalized = colors / 255.0
+    if has_color:
+        # 处理颜色信息
+        colors = point_cloud_np[..., 3:]  # 后三个坐标为颜色信息
+        
+        # 2. 颜色归一化到[0, 1]
+        # 检查颜色是否已经在[0, 1]范围内
+        reshaped_colors = colors.reshape(B, T * N, 3)
+        min_colors = np.min(reshaped_colors, axis=1)
+        max_colors = np.max(reshaped_colors, axis=1)
+        
+        # 如果颜色值不在[0, 1]范围内，则进行归一化
+        if np.any(min_colors < 0) or np.any(max_colors > 1):
+            # 假设颜色值在[0, 255]范围内，需要归一化到[0, 1]
+            colors_normalized = colors / 255.0
+        else:
+            # 颜色值已经在[0, 1]范围内，保持不变
+            colors_normalized = colors
+        
+        # 合并归一化后的坐标和颜色
+        normalized_point_cloud_np = np.concatenate([coords_normalized, colors_normalized], axis=-1)
     else:
-        # 颜色值已经在[0, 1]范围内，保持不变
-        colors_normalized = colors
-    
-    # 合并归一化后的坐标和颜色
-    normalized_point_cloud_np = np.concatenate([coords_normalized, colors_normalized], axis=-1)
+        # 只有坐标信息
+        normalized_point_cloud_np = coords_normalized
     
     # 转换回原始类型
     if is_tensor:

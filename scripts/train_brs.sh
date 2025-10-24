@@ -1,5 +1,5 @@
 #!/usr/bin/bash
-export CUDA_VISIBLE_DEVICES=3
+export CUDA_VISIBLE_DEVICES=7
 
 SEED=0
 
@@ -18,8 +18,8 @@ ENV_ID="$(echo $SUBTASK | sed 's/\b\(.\)/\u\1/g')SubtaskTrain-v0"
 WORKSPACE="mshab_exps"
 GROUP=$TASK-rcad-brs-$SUBTASK
 
-EXP_NAME="$ENV_ID/$GROUP/brs-$SUBTASK-$OBJ-local-one_decoder_head-trajs_per_obj=$TRAJS_PER_OBJ"
-# EXP_NAME="$ENV_ID/$GROUP/brs-$SUBTASK-$OBJ-local-without_extra-trajs_per_obj=$TRAJS_PER_OBJ"
+# EXP_NAME="$ENV_ID/$GROUP/brs-$SUBTASK-$OBJ-local-one_decoder_head-trajs_per_obj=$TRAJS_PER_OBJ"
+EXP_NAME="$ENV_ID/$GROUP/brs-$SUBTASK-$OBJ-local-without_extra-2-trajs_per_obj=$TRAJS_PER_OBJ"
 
 # shellcheck disable=SC2001
 PROJECT_NAME="MS-HAB-RCAD-brs"

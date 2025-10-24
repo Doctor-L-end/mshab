@@ -48,6 +48,10 @@ class PointNet(nn.Module):
         subtract_mean: bool = False,
     ):
         super().__init__()
+        assert n_coordinates == 3
+        assert n_color == 0 or n_color == 3
+        self.n_coordinates = n_coordinates
+        self.n_color = n_color
         pn_in_channels = n_coordinates + n_color
         if subtract_mean:
             pn_in_channels += n_coordinates
@@ -62,21 +66,29 @@ class PointNet(nn.Module):
         self.output_dim = self.pointnet.output_dim
 
     def forward(self, x):
-        """
-        x["xyz"]: (..., points, coordinates)
-        x["rgb"]: (..., points, color)
-        """
         # xyz = x["xyz"]
         # rgb = x["rgb"]
-        xyz = x[..., :3]
-        rgb = x[..., 3:6]
-        point = U.any_to_torch_tensor(xyz)
-        if self.subtract_mean:
-            mean = torch.mean(point, dim=-2, keepdim=True)  # (..., 1, coordinates)
-            mean = torch.broadcast_to(mean, point.shape)  # (..., points, coordinates)
-            point = point - mean
-            point = torch.cat([point, mean], dim=-1)  # (..., points, 2 * coordinates)
-        rgb = U.any_to_torch_tensor(rgb)
-        x = torch.cat([point, rgb], dim=-1)
+        if self.n_coordinates > 0 and self.n_color > 0:
+            xyz = x[..., :3]
+            rgb = x[..., 3:6]
+            point = U.any_to_torch_tensor(xyz)
+            if self.subtract_mean:
+                mean = torch.mean(point, dim=-2, keepdim=True)  # (..., 1, coordinates)
+                mean = torch.broadcast_to(mean, point.shape)  # (..., points, coordinates)
+                point = point - mean
+                point = torch.cat([point, mean], dim=-1)  # (..., points, 2 * coordinates)
+            rgb = U.any_to_torch_tensor(rgb)
+            x = torch.cat([point, rgb], dim=-1)
+        elif self.n_coordinates > 0 and self.n_color == 0:
+            xyz = x[..., :3]
+            point = U.any_to_torch_tensor(xyz)
+            if self.subtract_mean:
+                mean = torch.mean(point, dim=-2, keepdim=True)  # (..., 1, coordinates)
+                mean = torch.broadcast_to(mean, point.shape)  # (..., points, coordinates)
+                point = point - mean
+                point = torch.cat([point, mean], dim=-1)  # (..., points, 2 * coordinates)
+            x = point
+        else:
+            raise ValueError("n_coordinates和n_color不符合规定")
         return self.pointnet(x)
 

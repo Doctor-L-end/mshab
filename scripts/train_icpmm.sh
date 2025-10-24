@@ -1,14 +1,14 @@
 #!/usr/bin/bash
 export PYTHONPATH="/raid/ljh/mshab/mshab/agents:$PYTHONPATH"
 export PYTHONPATH="/raid/ljh/mshab/mshab/agents/icpmm:$PYTHONPATH"
-export CUDA_VISIBLE_DEVICES=6
+export CUDA_VISIBLE_DEVICES=5
 
 SEED=0
 
 TRAJS_PER_OBJ=1000
 MAX_IMAGE_CACHE_SIZE=all
 num_dataload_workers=8
-num_iterations=100_000
+num_iterations=400_000
 
 TASK=set_table
 SUBTASK=open
@@ -20,8 +20,8 @@ ENV_ID="$(echo $SUBTASK | sed 's/\b\(.\)/\u\1/g')SubtaskTrain-v0"
 WORKSPACE="mshab_exps"
 GROUP=$TASK-rcad-icpmm-$SUBTASK
 
-# EXP_NAME="$ENV_ID/$GROUP/icpmm-$SUBTASK-$OBJ-local-trajs_per_obj=$TRAJS_PER_OBJ"
-EXP_NAME="$ENV_ID/$GROUP/icpmm-$SUBTASK-$OBJ-local-without_extra-trajs_per_obj=$TRAJS_PER_OBJ"
+# EXP_NAME="$ENV_ID/$GROUP/icpmm-$SUBTASK-$OBJ-local-2-trajs_per_obj=$TRAJS_PER_OBJ"
+EXP_NAME="$ENV_ID/$GROUP/icpmm-$SUBTASK-$OBJ-local-without_extra-9-trajs_per_obj=$TRAJS_PER_OBJ"
 
 # shellcheck disable=SC2001
 PROJECT_NAME="MS-HAB-RCAD-icpmm"
@@ -76,7 +76,7 @@ args=(
     "logger.workspace=$WORKSPACE"
 )
 
-RESUME=True
+RESUME=False
 if [ -f "$RESUME_CONFIG" ] && [ -f "$RESUME_LOGDIR/models/latest.pt" ] && [ "$RESUME" = "True" ]; then
     echo "RESUMING"
     SAPIEN_NO_DISPLAY=1 python -m mshab.train_icpmm "$RESUME_CONFIG" RESUME_LOGDIR="$RESUME_LOGDIR" \

@@ -26,7 +26,7 @@ from mani_skill import ASSET_DIR  # ManiSkill资产目录
 from mani_skill.utils import common  # ManiSkill通用工具
 
 # 从自定义模块导入
-from mshab.agents.brs import Agent  # 扩散策略代理
+from mshab.agents.brs import Agent  # BRS策略代理
 from mshab.agents.brs.utils import IterationBasedBatchSampler, worker_init_fn  # 数据采样工具
 from mshab.agents.brs.utils import _get_merged_pc_vectorized
 from mshab.envs.make import EnvConfig, make_env  # 环境配置和创建
@@ -206,6 +206,9 @@ class BRSDataset(ClosableDataset):
                 obs_agent = obs["agent"]
                 obs_extra = obs["extra"]
                 # obs_extra = obs["extra"]["tcp_pose_wrt_base"]
+
+                obs_extra = {"tcp_pose_wrt_base": obs_extra["tcp_pose_wrt_base"],
+                             "goal_pos_wrt_base": obs_extra["goal_pos_wrt_base"]}
 
                 # 根据成功标志截断轨迹
                 if truncate_trajectories_at_success:

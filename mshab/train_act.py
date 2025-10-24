@@ -223,6 +223,13 @@ class ACTDataset(ClosableDataset):
             for k in tqdm(keys, desc=f"hf file {fp_num}"):
                 obs, act = f[k]["obs"], f[k]["actions"][:]
 
+                obs_agent = obs["agent"]
+                obs_extra = obs["extra"]
+                # obs_extra = obs["extra"]["tcp_pose_wrt_base"]
+
+                obs_extra = {"tcp_pose_wrt_base": obs_extra["tcp_pose_wrt_base"],
+                             "goal_pos_wrt_base": obs_extra["goal_pos_wrt_base"]}
+
                 # 根据成功标志截断轨迹
                 if truncate_trajectories_at_success:
                     success: List[bool] = f[k]["success"][:].tolist()
@@ -232,14 +239,20 @@ class ACTDataset(ClosableDataset):
                     success_cutoff = len(act)
 
                 # 处理状态观测
-                state_obs_list = [
-                    *recursive_h5py_to_numpy(
-                        obs["agent"], slice=slice(success_cutoff + 1)
-                    ).values(),
-                    *recursive_h5py_to_numpy(
-                        obs["extra"], slice=slice(success_cutoff + 1)
-                    ).values(),
-                ]
+                state_obs_list = []
+                # 处理 obs_agent
+                obs_agent_processed = recursive_h5py_to_numpy(obs_agent, slice=slice(success_cutoff + 1))
+                if isinstance(obs_agent_processed, dict):
+                    state_obs_list.extend(obs_agent_processed.values())
+                else:
+                    state_obs_list.append(obs_agent_processed)
+                # 处理 obs_extra
+                obs_extra_processed = recursive_h5py_to_numpy(obs_extra, slice=slice(success_cutoff + 1))
+                if isinstance(obs_extra_processed, dict):
+                    state_obs_list.extend(obs_extra_processed.values())
+                else:
+                    state_obs_list.append(obs_extra_processed)
+                
                 state_obs_list = [
                     x[:, None] if len(x.shape) == 1 else x for x in state_obs_list
                 ]

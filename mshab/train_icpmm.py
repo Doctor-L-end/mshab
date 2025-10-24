@@ -56,7 +56,7 @@ class ICPMMConfig:
         / "scene_datasets/replica_cad_dataset/rearrange-dataset/tidy_hosue/pick"
     )
     trajs_per_obj: Union[Literal["all"], int] = "all"  # 每个对象加载的轨迹数
-    truncate_trajectories_at_success: bool = False  # 是否在首次成功时截断轨迹
+    truncate_trajectories_at_success: bool = True  # 是否在首次成功时截断轨迹
     max_image_cache_size: Union[Literal["all"], int] = 0  # 最大图像缓存大小
     num_dataload_workers: int = 0  # 数据加载工作线程数
 
@@ -204,8 +204,12 @@ class ICPMMDataset(ClosableDataset):
                 obs, act = f[k]["obs"], f[k]["actions"][:]
 
                 obs_agent = obs["agent"]
-                # obs_extra = obs["extra"]
-                obs_extra = obs["extra"]["tcp_pose_wrt_base"]
+                obs_extra = obs["extra"]
+                # obs_extra = obs["extra"]["tcp_pose_wrt_base"]
+
+                obs_extra = {"tcp_pose_wrt_base": obs_extra["tcp_pose_wrt_base"],
+                             "goal_pos_wrt_base": obs_extra["goal_pos_wrt_base"]}
+                obs_obj_pose = obs["extra"]["obj_pose_wrt_base"]
 
                 # 根据成功标志截断轨迹
                 if truncate_trajectories_at_success:
@@ -235,7 +239,10 @@ class ICPMMDataset(ClosableDataset):
                 ]
                 state_obs = torch.from_numpy(np.concatenate(state_obs_list, axis=1))
                 act = torch.from_numpy(act)
-            
+
+                # 处理 obs_obj_pose
+                obs_obj_pose_processed = recursive_h5py_to_numpy(obs_obj_pose, slice=slice(success_cutoff + 1))
+                obs_obj_pose = torch.from_numpy(obs_obj_pose_processed)
                 # 处理点云观测
                 pixel_obs = dict(
                     fetch_head_rgb=obs["sensor_data"]["fetch_head"]["rgb"],
@@ -273,7 +280,7 @@ class ICPMMDataset(ClosableDataset):
 
                 # 存储轨迹数据
                 trajectories["actions"].append(act)
-                trajectories["observations"].append(dict(state=state_obs, pointcloud=pointcloud_obs, **pixel_obs))
+                trajectories["observations"].append(dict(state=state_obs, pointcloud=pointcloud_obs, **pixel_obs, target_obj_pose=obs_obj_pose))
 
             # 关闭文件或保留打开
             if num_uncached_this_file == 0:
@@ -329,12 +336,14 @@ class ICPMMDataset(ClosableDataset):
         for k, v in obs_traj.items():
             if k == "pointcloud":
                 obs_seq[k] = v[
-                    max(0, start) : end + 1
-                ]  # (L, N+1, 3) or (L, N+1, 6)
+                    max(0, start) : end
+                ]  # (L, N, 3) or (L, N, 6)
             elif k == "state":
                 obs_seq[k] = v[
                     max(0, start) : end
                 ] # (L, state_dim)
+            elif k == "target_obj_pose":
+                obs_seq[k] = v[end-1]
             else:
                 obs_seq[k] = v[end-1].unsqueeze(0) # 只要最后一帧图像
                 assert len(obs_seq[k].shape) == 4
@@ -355,7 +364,7 @@ class ICPMMDataset(ClosableDataset):
             
         # 验证序列长度
         assert (
-            obs_seq["pointcloud"].shape[0] == self.obs_horizon + 1 and
+            obs_seq["pointcloud"].shape[0] == self.obs_horizon and
             obs_seq["state"].shape[0] == self.obs_horizon and
             obs_seq["fetch_head_rgb"].shape[0] == 1 and
             obs_seq["fetch_head_depth"].shape[0] == 1 and
@@ -597,7 +606,7 @@ def train(cfg: TrainConfig):
                         # 获取动作序列
                         action_seq = agent.get_action(obs)
                         # 执行动作序列
-                        for i in range(action_seq.shape[1]):
+                        for i in range(min(2, action_seq.shape[1])):
                             obs, rew, terminated, truncated, info = eval_envs.step(
                                 action_seq[:, i]
                             )

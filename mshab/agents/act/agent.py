@@ -51,6 +51,12 @@ class Agent(nn.Module):
             encoder,
             state_dim=self.state_dim*args.obs_horizon,
             action_dim=self.act_dim,
+            # action_dims={
+            #     "mobile_base": 2,
+            #     "torso": 1,
+            #     "head": 2,  
+            #     "arm": 8,
+            # },
             num_queries=args.num_queries,
         )
 
@@ -107,8 +113,16 @@ class Agent(nn.Module):
         # obs_['state'] = obs['state'].squeeze(1)  # (B, 1, state_dim) -> (B, state_dim)
         obs_['state'] = obs['state'].reshape(obs['state'].shape[0], -1)  # (B, T, state_dim) -> (B, T*state_dim)
         
+        # # 分割真实动作到不同部件
+        # mobile_base_action = action_seq[..., -2:]  # 移动底座动作
+        # torso_action = action_seq[..., -3:-2]  # 躯干动作
+        # head_action = action_seq[..., -5:-3]  # 头部动作
+        # arm_action = action_seq[..., :-5]  # 手臂动作
+        # action_seq = torch.cat([mobile_base_action, torso_action, head_action, arm_action], dim=-1)
+
         # 前向传播
         a_hat, (mu, logvar) = self.model(obs_, action_seq)
+        # pred_action_seq = torch.cat([a_hat["mobile_base"], a_hat["torso"], a_hat["head"], a_hat["arm"]], dim=-1)
 
         # 计算KL散度
         total_kld, dim_wise_kld, mean_kld = kl_divergence(mu, logvar)
@@ -116,6 +130,7 @@ class Agent(nn.Module):
         # print(action_seq.shape, a_hat.shape)  # (B, T, act_dim) (B, T, act_dim)
         # 计算L1损失
         all_l1 = F.l1_loss(action_seq, a_hat, reduction='none')
+        # all_l1 = F.l1_loss(action_seq, pred_action_seq, reduction='none')
         l1 = all_l1.mean()
 
         # 组合损失
@@ -174,6 +189,14 @@ class Agent(nn.Module):
 
         # 从先验采样动作
         a_hat, (_, _) = self.model(obs_)
+
+        # # 分割真实动作到不同部件
+        # mobile_base_action = a_hat["mobile_base"]  # 移动底座动作
+        # torso_action = a_hat["torso"]  # 躯干动作
+        # head_action = a_hat["head"]  # 头部动作
+        # arm_action = a_hat["arm"]  # 手臂动作
+        # a_hat = torch.cat([arm_action, head_action, torso_action, mobile_base_action], dim=-1)
+
         return a_hat
 
 # KL散度计算函数
