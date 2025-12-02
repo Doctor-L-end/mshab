@@ -1,5 +1,5 @@
 #!/usr/bin/bash
-export CUDA_VISIBLE_DEVICES=5
+export CUDA_VISIBLE_DEVICES=4
 
 SEED=0
 
@@ -9,9 +9,9 @@ num_dataload_workers=8
 num_iterations=100_000
 
 TASK=set_table
-SUBTASK=close
+SUBTASK=place
 SPLIT=train
-OBJ=kitchen_counter
+OBJ=all
 
 # shellcheck disable=SC2001
 ENV_ID="$(echo $SUBTASK | sed 's/\b\(.\)/\u\1/g')SubtaskTrain-v0"
@@ -34,7 +34,7 @@ fi
 RESUME_LOGDIR="$WORKSPACE/$EXP_NAME"
 RESUME_CONFIG="$RESUME_LOGDIR/config.yml"
 
-if [[ $SUBTASK == "open" || $SUBTASK == "close" ]]; then
+if [[ $OBJ != "all" ]]; then
     data_dir_fp="$MS_ASSET_DIR/data/scene_datasets/replica_cad_dataset/rearrange-dataset/$TASK/$SUBTASK/$OBJ.h5"
 else
     data_dir_fp="$MS_ASSET_DIR/data/scene_datasets/replica_cad_dataset/rearrange-dataset/$TASK/$SUBTASK"

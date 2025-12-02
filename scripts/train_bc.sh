@@ -1,5 +1,5 @@
 #!/usr/bin/bash
-export CUDA_VISIBLE_DEVICES=4
+export CUDA_VISIBLE_DEVICES=1
 
 SEED=0
 
@@ -7,16 +7,16 @@ TRAJS_PER_OBJ=1000
 epochs=20
 
 TASK=set_table
-SUBTASK=open
+SUBTASK=pick
 SPLIT=train
-OBJ=fridge
+OBJ=013_apple
 
 # shellcheck disable=SC2001
 ENV_ID="$(echo $SUBTASK | sed 's/\b\(.\)/\u\1/g')SubtaskTrain-v0"
 WORKSPACE="mshab_exps"
 GROUP=$TASK-rcad-bc-$SUBTASK
 # EXP_NAME="$ENV_ID/$GROUP/bc-$SUBTASK-$OBJ-local-trajs_per_obj=$TRAJS_PER_OBJ"
-EXP_NAME="$ENV_ID/$GROUP/bc-$SUBTASK-$OBJ-local-without_extra-trajs_per_obj=$TRAJS_PER_OBJ"
+EXP_NAME="$ENV_ID/$GROUP/bc-$SUBTASK-$OBJ-local-without_extra-without_q_vel-trajs_per_obj=$TRAJS_PER_OBJ"
 # shellcheck disable=SC2001
 PROJECT_NAME="MS-HAB-RCAD-bc"
 
@@ -33,7 +33,7 @@ RESUME_CONFIG="$RESUME_LOGDIR/config.yml"
 
 MAX_CACHE_SIZE=300000   # safe num for about 64 GiB system memory
 
-if [[ $SUBTASK == "open" || $SUBTASK == "close" ]]; then
+if [[ $OBJ != "all" ]]; then
     data_dir_fp="$MS_ASSET_DIR/data/scene_datasets/replica_cad_dataset/rearrange-dataset/$TASK/$SUBTASK/$OBJ.h5"
 else
     data_dir_fp="$MS_ASSET_DIR/data/scene_datasets/replica_cad_dataset/rearrange-dataset/$TASK/$SUBTASK"

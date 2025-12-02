@@ -245,6 +245,7 @@ class BCDataset(ClosableDataset):
         # 转换观测数据
         observation = ep_data["obs"]
         agent_obs = self.transform_idx(observation["agent"], step_num)
+        agent_obs.pop("qvel")
         extra_obs = self.transform_idx(observation["extra"], step_num)
         extra_obs.pop("obj_pose_wrt_base")
         extra_obs.pop("is_grasped")

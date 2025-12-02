@@ -166,10 +166,9 @@ class FetchPointcloudFromDepthObservationWrapper(gym.ObservationWrapper):
             return torch.cat([sampled_head_points, sampled_head_colors], dim=2)
         else:
             final_points = torch.cat([sampled_head_points, sampled_hand_points], dim=1)
-            # final_colors = torch.cat([sampled_head_colors, sampled_hand_colors], dim=1)
+            final_colors = torch.cat([sampled_head_colors, sampled_hand_colors], dim=1)
         
-        return final_points
-        # return torch.cat([final_points, final_colors], dim=2)
+        return torch.cat([final_points, final_colors], dim=2)
 
     def observation(self, observation):
         # print(observation.keys()) # dict_keys(['agent', 'extra', 'sensor_data', 'sensor_param'])
@@ -266,6 +265,7 @@ class FetchRGBDObservationWrapper(gym.ObservationWrapper):
         # print(observation.keys()) # dict_keys(['agent', 'extra', 'sensor_data', 'sensor_param'])
 
         agent_obs = observation["agent"]
+        agent_obs.pop("qvel")
         extra_obs = observation["extra"]
         # extra_obs = observation["extra"]["tcp_pose_wrt_base"]
         extra_obs.pop("obj_pose_wrt_base")

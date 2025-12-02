@@ -1,14 +1,12 @@
 #!/usr/bin/bash
-export PYTHONPATH="/raid/ljh/mshab/mshab/agents:$PYTHONPATH"
-export PYTHONPATH="/raid/ljh/mshab/mshab/agents/icpmm:$PYTHONPATH"
-export CUDA_VISIBLE_DEVICES=5
+export CUDA_VISIBLE_DEVICES=0
 
 SEED=0
 
 TRAJS_PER_OBJ=1000
 MAX_IMAGE_CACHE_SIZE=all
 num_dataload_workers=8
-num_iterations=400_000
+num_iterations=100_000
 
 TASK=set_table
 SUBTASK=open
@@ -18,13 +16,13 @@ OBJ=fridge
 # shellcheck disable=SC2001
 ENV_ID="$(echo $SUBTASK | sed 's/\b\(.\)/\u\1/g')SubtaskTrain-v0"
 WORKSPACE="mshab_exps"
-GROUP=$TASK-rcad-icpmm-$SUBTASK
+GROUP=$TASK-rcad-hm-$SUBTASK
 
-# EXP_NAME="$ENV_ID/$GROUP/icpmm-$SUBTASK-$OBJ-local-2-trajs_per_obj=$TRAJS_PER_OBJ"
-EXP_NAME="$ENV_ID/$GROUP/icpmm-$SUBTASK-$OBJ-local-without_extra-9-trajs_per_obj=$TRAJS_PER_OBJ"
+# EXP_NAME="$ENV_ID/$GROUP/hm-$SUBTASK-$OBJ-local-trajs_per_obj=$TRAJS_PER_OBJ"
+EXP_NAME="$ENV_ID/$GROUP/hm-$SUBTASK-$OBJ-local-darm+dcfm+gscot_loss-0.01-without_extra-trajs_per_obj=$TRAJS_PER_OBJ"
 
 # shellcheck disable=SC2001
-PROJECT_NAME="MS-HAB-RCAD-icpmm"
+PROJECT_NAME="MS-HAB-RCAD-hm"
 
 OBS_MODE="rgbd" # env supports rgbd, pointcloud, segmentation, etc per ManiSkill; we use depth for provided baselines
 
@@ -67,8 +65,8 @@ args=(
     "eval_env.get_pointcloud_from_depth=True"
     "eval_env.num_envs=63"
     "eval_env.max_episode_steps=200"
-    "eval_env.record_video=False"
-    "eval_env.info_on_video=True"
+    "eval_env.record_video=True"
+    "eval_env.info_on_video=False"
     "eval_env.save_video_freq=1"
     "logger.wandb=$WANDB"
     "logger.tensorboard=$TENSORBOARD"
@@ -79,16 +77,15 @@ args=(
 RESUME=False
 if [ -f "$RESUME_CONFIG" ] && [ -f "$RESUME_LOGDIR/models/latest.pt" ] && [ "$RESUME" = "True" ]; then
     echo "RESUMING"
-    SAPIEN_NO_DISPLAY=1 python -m mshab.train_icpmm "$RESUME_CONFIG" RESUME_LOGDIR="$RESUME_LOGDIR" \
+    SAPIEN_NO_DISPLAY=1 python -m mshab.train_hm "$RESUME_CONFIG" RESUME_LOGDIR="$RESUME_LOGDIR" \
         logger.clear_out="False" \
         logger.best_stats_cfg="{eval/success_once: 1, eval/return_per_step: 1}" \
         "${args[@]}"
 
 else
     echo "STARTING"
-    SAPIEN_NO_DISPLAY=1 python -m mshab.train_icpmm configs/icpmm_pick.yml \
+    SAPIEN_NO_DISPLAY=1 python -m mshab.train_hm configs/hm_pick.yml \
         logger.clear_out="True" \
         logger.best_stats_cfg="{eval/success_once: 1, eval/return_per_step: 1}" \
         "${args[@]}"
-        
 fi
